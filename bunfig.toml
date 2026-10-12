@@ -1,0 +1,3 @@
+[test]
+# Integration suites spawn the CLI with the Roslyn analyzer; a per-test budget well above bun's 5 s default keeps them deterministic on slow hosts.
+timeout = 180000

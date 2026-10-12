@@ -1,0 +1,5 @@
+{
+  "bindings": [
+    { "name": "message", "type": "serviceBusTrigger", "direction": "in", "queueName": "orders", "connection": "ServiceBusConnection" }
+  ]
+}

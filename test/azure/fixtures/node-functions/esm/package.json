@@ -1,0 +1,7 @@
+{
+  "name": "contoso-esm-functions",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/functions/*.mjs",
+  "dependencies": { "@azure/functions": "^4.5.0", "@azure/storage-blob": "^12.24.0", "@azure/identity": "^4.4.1" }
+}

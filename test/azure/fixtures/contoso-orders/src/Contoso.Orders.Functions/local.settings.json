@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "ServiceBus__fullyQualifiedNamespace": "sb-contoso-orders.servicebus.windows.net",
+    "Cosmos__accountEndpoint": "https://cosmos-contoso-orders.documents.azure.com:443/",
+    "CleanupSchedule": "0 0 3 * * *",
+    "ServiceBusAdminConnection": "Endpoint=sb://sb-contoso-orders.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFy="
+  }
+}

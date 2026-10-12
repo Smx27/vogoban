@@ -1,0 +1,54 @@
+policy: clean-architecture
+name: Clean Architecture layer boundaries
+level: organization
+layers:
+  Domain:
+    kind: Project
+    name: ["*.Domain", "*.Domain.*"]
+  Application:
+    kind: Project
+    name: ["*.Application", "*.Application.*"]
+  Infrastructure:
+    kind: Project
+    name: ["*.Infrastructure", "*.Infrastructure.*", "*.Infra", "*.Infra.*"]
+  Presentation:
+    kind: Project
+    name: ["*.API", "*.Api", "*.Web", "*.Services.Api", "*.Host"]
+rules:
+  - id: CA001
+    name: Domain must not depend on Infrastructure
+    severity: ERROR
+    mode: forbidden
+    from: { layer: Domain }
+    to: { layer: Infrastructure }
+    relationships: [PROJECT_REFERENCES]
+  - id: CA002
+    name: Domain must not depend on Presentation
+    severity: ERROR
+    mode: forbidden
+    from: { layer: Domain }
+    to: { layer: Presentation }
+    relationships: [PROJECT_REFERENCES]
+  - id: CA003
+    name: Application must not depend on Infrastructure
+    severity: WARNING
+    mode: forbidden
+    from: { layer: Application }
+    to: { layer: Infrastructure }
+    relationships: [PROJECT_REFERENCES]
+  - id: CA004
+    name: Presentation should not depend directly on Infrastructure
+    severity: WARNING
+    mode: forbidden
+    from: { layer: Presentation }
+    to: { layer: Infrastructure }
+    relationships: [PROJECT_REFERENCES]
+  - id: CA005
+    name: Domain must not reach Infrastructure transitively
+    severity: WARNING
+    mode: forbidden
+    from: { layer: Domain }
+    to: { layer: Infrastructure }
+    relationships: [PROJECT_REFERENCES]
+    transitive: true
+    maxDepth: 4

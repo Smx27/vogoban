@@ -1,0 +1,14 @@
+name: contoso-orders
+services:
+  web:
+    project: ./web
+    language: ts
+    host: staticwebapp
+  api:
+    project: ./src/Contoso.Orders.Api
+    language: dotnet
+    host: appservice
+  functions:
+    project: ./src/Contoso.Orders.Functions
+    language: dotnet
+    host: function

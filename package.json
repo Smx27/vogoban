@@ -1,0 +1,36 @@
+{
+  "name": "vogoban",
+  "version": "0.18.0",
+  "description": ".NET-first enterprise code and architecture graph engine",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "vogoban": "./src/cli/main.ts"
+  },
+  "scripts": {
+    "vogoban": "bun src/cli/main.ts",
+    "typecheck": "tsc --noEmit",
+    "build:roslyn": "dotnet build semantic/Vogoban.Roslyn -c Release"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/context-async-hooks": "^2.12.0",
+    "@opentelemetry/core": "^2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/resources": "^2.12.0",
+    "@opentelemetry/sdk-trace-base": "^2.12.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "fast-xml-parser": "^5.11.2",
+    "jose": "^6.2.12",
+    "tree-sitter-c-sharp": "^0.23.5",
+    "tree-sitter-javascript": "0.25.0",
+    "tree-sitter-typescript": "0.23.2",
+    "typescript-compiler": "npm:typescript@6.0.3",
+    "web-tree-sitter": "^0.27.0",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}

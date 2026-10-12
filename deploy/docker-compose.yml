@@ -1,0 +1,50 @@
+# Reference single-node deployment: PostgreSQL (platform state + job queue), API, worker(s).
+# Secrets come from the environment (.env next to this file, or your orchestrator's secret store); nothing secret is committed.
+# TLS terminates at your ingress / load balancer in front of `api` (VOGOBAN_PUBLIC_URL must be the https URL users see).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: vogoban
+      POSTGRES_DB: vogoban
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "vogoban"], interval: 10s }
+  api: &platform
+    image: vogoban:0.18.0
+    build: ..
+    command: ["platform", "serve"]
+    depends_on: { postgres: { condition: service_healthy } }
+    environment: &env
+      VOGOBAN_MODE: enterprise
+      VOGOBAN_DATABASE_URL: postgres://vogoban:${POSTGRES_PASSWORD}@postgres:5432/vogoban
+      VOGOBAN_PUBLIC_URL: ${VOGOBAN_PUBLIC_URL:?set the external https URL}
+      VOGOBAN_OIDC_ISSUER: ${VOGOBAN_OIDC_ISSUER:?set the OIDC issuer}
+      VOGOBAN_OIDC_CLIENT_ID: ${VOGOBAN_OIDC_CLIENT_ID:?set the OIDC client id}
+      VOGOBAN_OIDC_CLIENT_SECRET_REF: env:OIDC_CLIENT_SECRET
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      VOGOBAN_PLATFORM_OPERATORS: ${VOGOBAN_PLATFORM_OPERATORS:-}
+      VOGOBAN_GIT_ALLOWED_HOSTS: ${VOGOBAN_GIT_ALLOWED_HOSTS:-github.com,gitlab.com,dev.azure.com}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      # Repository credentials, webhook secrets and AI keys are referenced by name (env:NAME / file:/run/secrets/NAME).
+      GITHUB_TOKEN_ORG: ${GITHUB_TOKEN_ORG:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports: ["8080:8080"]
+    volumes: [data:/data]
+  worker:
+    <<: *platform
+    command: ["platform", "worker"]
+    ports: []
+    # Repository analysis is confined by a user+mount+PID+network namespace jail; Docker's default seccomp/AppArmor
+    # profiles and masked /proc forbid it, so without these options the worker falls back to static-only analysis.
+    security_opt: ["seccomp=unconfined", "apparmor=unconfined", "systempaths=unconfined"]
+    # The worker serves its own health endpoint on VOGOBAN_WORKER_HEALTH_PORT (9464), not on 8080 (B-04).
+    healthcheck: { test: ["CMD", "curl", "-fsS", "http://localhost:9464/health/live"], interval: 30s, timeout: 5s }
+    environment:
+      <<: *env
+      VOGOBAN_WORKER_CONCURRENCY: "2"
+      VOGOBAN_WORKER_HEALTH_PORT: "9464"
+      VOGOBAN_HEALTHCHECK_PORT: "9464"
+volumes:
+  pgdata: {}
+  data: {}

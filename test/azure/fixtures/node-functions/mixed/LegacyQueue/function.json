@@ -1,0 +1,6 @@
+{
+  "scriptFile": "../legacy/queue.js",
+  "bindings": [
+    { "name": "item", "type": "queueTrigger", "direction": "in", "queueName": "legacy-items", "connection": "StorageConnection" }
+  ]
+}

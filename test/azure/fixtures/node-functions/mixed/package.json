@@ -1,0 +1,6 @@
+{
+  "name": "contoso-mixed-functions",
+  "version": "1.0.0",
+  "main": "src/functions/*.{js,mjs}",
+  "dependencies": { "@azure/functions": "^4.5.0", "@azure/cosmos": "^4.1.1" }
+}

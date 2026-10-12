@@ -1,0 +1,12 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "OrdersBus__fullyQualifiedNamespace": "sb-contoso-orders.servicebus.windows.net",
+    "OrdersBus__credential": "managedidentity",
+    "PlatformBus__fullyQualifiedNamespace": "sb-contoso-platform.servicebus.windows.net",
+    "PlatformBus__credential": "managedidentity",
+    "COSMOS_ENDPOINT": "https://cosmos-contoso-fulfillment.documents.azure.com:443/"
+  }
+}

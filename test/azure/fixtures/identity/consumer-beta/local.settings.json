@@ -1,0 +1,7 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "ServiceBusConnection__fullyQualifiedNamespace": "sb-beta.servicebus.windows.net"
+  }
+}

@@ -1,0 +1,6 @@
+name: bicep-two-namespaces
+services:
+  worker:
+    project: ./worker
+    language: js
+    host: function

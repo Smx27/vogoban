@@ -1,0 +1,25 @@
+# Optional platform configuration file ($VOGOBAN_PLATFORM_CONFIG). Environment variables override every key.
+# Never put secret values here: credentials are references (env:NAME or file:/path) resolved at use time.
+mode: enterprise
+dataDir: /data
+publicUrl: https://vogoban.example.com
+listen: { host: 0.0.0.0, port: 8080 }
+auth:
+  issuer: https://login.example.com/realms/engineering
+  clientId: vogoban
+  clientSecretRef: file:/run/secrets/oidc-client-secret
+  scopes: [openid, email, profile]
+  sessionTtlHours: 12
+  operators: [platform-team@example.com]
+git:
+  allowedHosts: [github.com, gitlab.example.com, dev.azure.com]
+  allowPrivateNetworks: false
+  timeoutSeconds: 300
+  restore: true
+worker: { concurrency: 2, pollSeconds: 2, leaseSeconds: 60, analysisTimeoutMinutes: 60, maxAttempts: 3 }
+features: { ai: true, mcp: true, integrations: true, security: true, governance: true, exports: true }
+rateLimits:
+  ai: { capacity: 5, refillPerMinute: 10 }
+  exports: { capacity: 5, refillPerMinute: 5 }
+metricsTokenRef: env:METRICS_TOKEN
+otel: { serviceName: vogoban }

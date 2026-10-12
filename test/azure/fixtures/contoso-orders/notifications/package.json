@@ -1,0 +1,7 @@
+{
+  "name": "contoso-notifications",
+  "version": "1.0.0",
+  "main": "dist/src/functions/*.js",
+  "dependencies": { "@azure/functions": "^4.5.0", "@azure/service-bus": "^7.9.5", "@azure/identity": "^4.4.1" },
+  "devDependencies": { "typescript": "^5.6.2" }
+}

@@ -1,0 +1,7 @@
+{
+  "bindings": [
+    { "name": "req", "type": "httpTrigger", "direction": "in", "methods": ["post"] },
+    { "name": "out", "type": "serviceBus", "direction": "out", "queueName": "", "connection": "ServiceBusConnection" },
+    { "name": "blob", "type": "blob", "direction": "out", "path": " ", "connection": "AzureWebJobsStorage" }
+  ]
+}
