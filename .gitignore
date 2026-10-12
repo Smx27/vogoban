@@ -46,3 +46,4 @@ coverage/
 # Misc
 *.tgz
 .cache/
+test/eShop
