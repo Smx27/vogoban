@@ -1,0 +1,13 @@
+environment                          = "prod"
+location                             = "westeurope"
+service_bus_sku                      = "Premium"
+cosmos_max_autoscale_throughput      = 20000
+storage_replication_type             = "GRS"
+log_analytics_retention_in_days      = 365
+function_app_plan_sku_name           = "EP2"
+container_app_min_replicas           = 2
+container_app_max_replicas           = 10
+notification_service_max_replicas    = 30
+queue_message_count_threshold        = 25
+container_image_registry             = "vgentacr.azurecr.io"
+container_image_tag                  = "1.0.0"

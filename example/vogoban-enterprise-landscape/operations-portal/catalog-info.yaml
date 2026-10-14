@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: operations-portal
+  description: Server-rendered operations experience that reads the platform gateway and the reporting platform.
+  annotations:
+    vg.io/repository: operations-portal
+    vg.io/domain: experience
+    vg.io/deployment-unit: none
+spec:
+  type: website
+  lifecycle: production
+  owner: digital-experience
+  system: vg-enterprise
+  dependsOn:
+    - component:vg-platform-gateway
+    - component:vg-reporting-worker

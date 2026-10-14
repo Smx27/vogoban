@@ -1,0 +1,29 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: infrastructure
+  description: Bicep, Terraform and Kubernetes definitions of every runtime resource in the VG enterprise landscape.
+  annotations:
+    vg.io/repository: infrastructure
+    vg.io/domain: platform
+    vg.io/deployment-unit: none
+spec:
+  type: infrastructure
+  lifecycle: production
+  owner: platform-engineering
+  system: vg-enterprise
+  dependsOn:
+    - resource:azure-servicebus-namespace-vg-enterprise-servicebus
+    - resource:azure-cosmosdb-account-vg-enterprise-cosmos
+    - resource:azure-storage-account-vgentstorage
+    - resource:azure-key-vault-vg-enterprise-kv
+    - resource:azure-managed-identity-vg-enterprise-identity
+    - resource:azure-log-analytics-vg-enterprise-logs
+    - resource:azure-application-insights-vg-enterprise-appinsights
+    - resource:azure-container-apps-environment-vg-enterprise-aca-env
+    - component:platform-gateway
+    - component:orders-service
+    - component:customer-service
+    - component:notification-service
+    - component:order-processing
+    - component:reporting-platform

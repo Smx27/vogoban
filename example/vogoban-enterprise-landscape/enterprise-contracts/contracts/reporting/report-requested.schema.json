@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/reporting/report-requested.schema.json",
+  "title": "ReportRequestedEvent",
+  "description": "Sent to the vg-report-jobs queue for the reporting worker to pick up. Contract id reporting/report-requested. Mirrors Vg.Enterprise.Contracts.Reporting.ReportRequestedEvent.",
+  "type": "object",
+  "properties": {
+    "reportId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "reportType": {
+      "type": "string"
+    },
+    "requestedBy": {
+      "type": "string"
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "reportId",
+    "reportType",
+    "requestedBy",
+    "requestedAt"
+  ],
+  "additionalProperties": false
+}

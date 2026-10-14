@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Azure Functions Core Tools
+.azurefunctions/
+*.zip
+
+# Local overrides (never commit real values)
+appsettings.Local.json
+.env
+.env.local
+
+# Tooling
+.idea/
+.DS_Store
+TestResults/

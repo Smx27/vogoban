@@ -1,0 +1,18 @@
+<h2>Profile</h2>
+
+@if (error(); as message) {
+  <p role="alert">{{ message }}</p>
+}
+
+@if (customer(); as profile) {
+  <dl>
+    <dt>Id</dt>
+    <dd>{{ profile.id }}</dd>
+    <dt>Name</dt>
+    <dd>{{ profile.name }}</dd>
+    <dt>Email</dt>
+    <dd>{{ profile.email }}</dd>
+    <dt>Created</dt>
+    <dd>{{ profile.createdAt }}</dd>
+  </dl>
+}

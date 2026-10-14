@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/customers/create-customer-request.schema.json",
+  "title": "CreateCustomerRequest",
+  "description": "Request body of POST /customers on customer-service. Mirrors Vg.Enterprise.Contracts.Customers.CreateCustomerRequest.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "email"
+  ],
+  "additionalProperties": false
+}

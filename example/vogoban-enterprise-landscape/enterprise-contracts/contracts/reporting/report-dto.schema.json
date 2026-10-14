@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/reporting/report-dto.schema.json",
+  "title": "ReportDto",
+  "description": "The report record reporting-platform stores in the vg-reports container and writes its artifact for. Mirrors Vg.Enterprise.Contracts.Reporting.ReportDto.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "reportType": {
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/reportStatus"
+    },
+    "artifactPath": {
+      "type": "string"
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "reportType",
+    "status",
+    "artifactPath",
+    "requestedAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "reportStatus": {
+      "title": "ReportStatus",
+      "type": "string",
+      "enum": [
+        "queued",
+        "completed"
+      ]
+    }
+  }
+}

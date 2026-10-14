@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/customers/notification-preference.schema.json",
+  "title": "NotificationPreferenceDto",
+  "description": "The channel a customer has opted into, owned by customer-service and read by notification-service. Mirrors Vg.Enterprise.Contracts.Customers.NotificationPreferenceDto.",
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "string"
+    },
+    "channel": {
+      "$ref": "#/$defs/notificationChannel"
+    },
+    "address": {
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "customerId",
+    "channel",
+    "address",
+    "enabled"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "notificationChannel": {
+      "title": "NotificationChannel",
+      "type": "string",
+      "enum": [
+        "email",
+        "sms"
+      ]
+    }
+  }
+}

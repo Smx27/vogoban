@@ -1,4 +1,4 @@
-import { Chalk } from "chalk";
+import chalk from "chalk";
 
 type Level = "debug" | "info" | "warn" | "error";
 const ORDER: Record<Level, number> = {
@@ -7,14 +7,7 @@ const ORDER: Record<Level, number> = {
   warn: 30,
   error: 40,
 };
-const terminal = new Chalk({
-  level:
-    process.stderr.isTTY &&
-    !("NO_COLOR" in process.env) &&
-    process.env.TERM !== "dumb"
-      ? 1
-      : 0,
-});
+const terminal = chalk;
 
 export interface Logger {
   debug(event: string, fields?: Record<string, unknown>): void;

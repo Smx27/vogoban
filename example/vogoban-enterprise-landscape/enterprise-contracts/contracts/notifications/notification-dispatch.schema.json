@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/notifications/notification-dispatch.schema.json",
+  "title": "NotificationDispatchDto",
+  "description": "The delivery record notification-service writes for a dispatched notification. Mirrors Vg.Enterprise.Contracts.Notifications.NotificationDispatchDto.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "channel": {
+      "$ref": "#/$defs/notificationChannel"
+    },
+    "recipient": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "customerId",
+    "channel",
+    "recipient",
+    "status",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "notificationChannel": {
+      "title": "NotificationChannel",
+      "type": "string",
+      "enum": [
+        "email",
+        "sms"
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: vg-enterprise-servicebus-auth
+  namespace: vg-enterprise
+  labels:
+    app.kubernetes.io/part-of: vg-enterprise
+    app.kubernetes.io/managed-by: infrastructure
+spec:
+  podIdentity:
+    provider: azure-workload
+    identityId: "00000000-0000-0000-0000-000000000000"

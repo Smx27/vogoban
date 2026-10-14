@@ -4,10 +4,13 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": [
-      "ESNext"
+      "ESNext",
+      "DOM"
     ],
     "types": [
-      "bun-types"
+      "bun-types",
+      "react",
+      "react-dom"
     ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -18,9 +21,11 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "jsxImportSource": "react"
   },
   "include": [
-    "src"
+    "src",
+    "test"
   ]
 }

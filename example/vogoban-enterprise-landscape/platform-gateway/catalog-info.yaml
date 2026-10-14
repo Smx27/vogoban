@@ -1,0 +1,19 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vg-platform-gateway
+  description: HTTP orchestration hub fronting the orders, customers and reporting services for the VG enterprise landscape.
+  annotations:
+    vg.io/repository: platform-gateway
+    vg.io/domain: platform
+    vg.io/deployment-unit: vg-platform-gateway
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-engineering
+  system: vg-enterprise
+  dependsOn:
+    - component:enterprise-contracts
+    - component:vg-orders-api
+    - component:vg-customers-api
+    - component:vg-reporting-worker

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/order-dto.schema.json",
+  "title": "OrderDto",
+  "description": "The order read model served by orders-service. Mirrors Vg.Enterprise.Contracts.Orders.OrderDto.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/orderLine"
+      }
+    },
+    "total": {
+      "type": "number"
+    },
+    "status": {
+      "$ref": "#/$defs/orderStatus"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "customerId",
+    "lines",
+    "total",
+    "status",
+    "createdAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "orderLine": {
+      "title": "OrderLineDto",
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "unitPrice": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "sku",
+        "quantity",
+        "unitPrice"
+      ],
+      "additionalProperties": false
+    },
+    "orderStatus": {
+      "title": "OrderStatus",
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "cancelled",
+        "processing"
+      ]
+    }
+  }
+}

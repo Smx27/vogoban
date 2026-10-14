@@ -1,0 +1,19 @@
+<h2>Orders for {{ customerId }}</h2>
+
+@if (error(); as message) {
+  <p role="alert">{{ message }}</p>
+}
+
+@if (summary(); as totals) {
+  <p>{{ totals.orderCount }} order(s), {{ totals.totalValue }} in total.</p>
+}
+
+@if (orders().length === 0) {
+  <p>No orders.</p>
+}
+
+<ul>
+  @for (order of orders(); track order.id) {
+    <li>{{ order.id }} — {{ order.status }} — {{ order.total }}</li>
+  }
+</ul>

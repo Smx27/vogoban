@@ -1,0 +1,154 @@
+asyncapi: 2.6.0
+
+id: urn:vg:enterprise:order-events
+
+info:
+  title: VG enterprise order events
+  version: 1.0.0
+  description: >-
+    The messaging topology of the VG enterprise landscape: the vg-order-events topic on the
+    vg-enterprise-servicebus Service Bus namespace and the queues the downstream services consume.
+    Every message payload is the JSON Schema published by this repository, referenced rather than
+    restated, so the wire contract and the C# records in dotnet/Enterprise.Contracts cannot drift.
+
+defaultContentType: application/json
+
+servers:
+  vg-enterprise-servicebus:
+    url: vg-enterprise-servicebus.servicebus.windows.net
+    protocol: amqps
+    description: >-
+      Azure Service Bus namespace in resource group rg-vg-enterprise. Clients authenticate with the
+      user-assigned managed identity vg-enterprise-identity, or with the connection string held in
+      the Key Vault secret vg-servicebus-connection.
+
+channels:
+  vg-order-events:
+    description: >-
+      Topic on vg-enterprise-servicebus. orders-service publishes every order lifecycle event here.
+      Two subscriptions fan the topic out: vg-order-processor, which feeds
+      vg-order-processor-function, and vg-notifications, which feeds vg-notification-service.
+    publish:
+      operationId: publishOrderEvent
+      summary: orders-service publishes an order lifecycle event.
+      description: >-
+        The published message is one of the three order event contracts, selected by what happened to
+        the order.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/OrderCreatedEvent'
+          - $ref: '#/components/messages/OrderUpdatedEvent'
+          - $ref: '#/components/messages/OrderCancelledEvent'
+
+  vg-order-processor:
+    description: >-
+      Subscription vg-order-processor on the vg-order-events topic, consumed by
+      vg-order-processor-function, which projects the order into the vg-orders container of the
+      vg-enterprise database.
+    subscribe:
+      operationId: consumeOrderEventsForOrderProcessing
+      summary: vg-order-processor-function projects an order lifecycle event into vg-orders.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/OrderCreatedEvent'
+          - $ref: '#/components/messages/OrderUpdatedEvent'
+          - $ref: '#/components/messages/OrderCancelledEvent'
+
+  vg-notifications:
+    description: >-
+      Subscription vg-notifications on the vg-order-events topic, consumed by
+      vg-notification-service. The service resolves the customer notification preference over HTTP
+      and requests the dispatch through the vg-notification-requests queue.
+    subscribe:
+      operationId: consumeOrderEventsForNotification
+      summary: vg-notification-service turns an order lifecycle event into a customer notification.
+      message:
+        oneOf:
+          - $ref: '#/components/messages/OrderCreatedEvent'
+          - $ref: '#/components/messages/OrderUpdatedEvent'
+          - $ref: '#/components/messages/OrderCancelledEvent'
+
+  vg-notification-requests:
+    description: >-
+      Queue consumed by vg-notification-service. Each request is delivered over the customer's
+      preferred channel, the rendered payload is archived in the vg-notification-payloads container
+      of the vgentstorage account, and the delivery is recorded as a notification dispatch.
+    subscribe:
+      operationId: consumeNotificationRequests
+      summary: vg-notification-service delivers a requested notification.
+      message:
+        $ref: '#/components/messages/NotificationRequestedEvent'
+
+  vg-report-jobs:
+    description: >-
+      Queue consumed by vg-reporting-worker and scaled on queue depth by KEDA. The worker records
+      the report in the vg-reports container of the vg-enterprise database and writes its artifact to
+      the vg-report-artifacts container of the vgentstorage account.
+    subscribe:
+      operationId: consumeReportJobs
+      summary: vg-reporting-worker produces a requested report artifact.
+      message:
+        $ref: '#/components/messages/ReportRequestedEvent'
+
+components:
+  messages:
+    OrderCreatedEvent:
+      name: OrderCreatedEvent
+      title: Order created
+      summary: A customer order was accepted by orders-service.
+      contentType: application/json
+      x-vg-contract-id: orders/order-created
+      payload:
+        $ref: '#/components/schemas/OrderCreatedEvent'
+
+    OrderUpdatedEvent:
+      name: OrderUpdatedEvent
+      title: Order updated
+      summary: An accepted order changed status or value in orders-service.
+      contentType: application/json
+      x-vg-contract-id: orders/order-updated
+      payload:
+        $ref: '#/components/schemas/OrderUpdatedEvent'
+
+    OrderCancelledEvent:
+      name: OrderCancelledEvent
+      title: Order cancelled
+      summary: An order was cancelled in orders-service.
+      contentType: application/json
+      x-vg-contract-id: orders/order-cancelled
+      payload:
+        $ref: '#/components/schemas/OrderCancelledEvent'
+
+    NotificationRequestedEvent:
+      name: NotificationRequestedEvent
+      title: Notification requested
+      summary: A notification that vg-notification-service must deliver to a customer.
+      contentType: application/json
+      x-vg-contract-id: notifications/notification-requested
+      payload:
+        $ref: '#/components/schemas/NotificationRequestedEvent'
+
+    ReportRequestedEvent:
+      name: ReportRequestedEvent
+      title: Report requested
+      summary: A report job that vg-reporting-worker must produce.
+      contentType: application/json
+      x-vg-contract-id: reporting/report-requested
+      payload:
+        $ref: '#/components/schemas/ReportRequestedEvent'
+
+  schemas:
+    OrderCreatedEvent:
+      $ref: '../contracts/orders/order-created.schema.json'
+
+    OrderUpdatedEvent:
+      $ref: '../contracts/orders/order-updated.schema.json'
+
+    OrderCancelledEvent:
+      $ref: '../contracts/orders/order-cancelled.schema.json'
+
+    NotificationRequestedEvent:
+      $ref: '../contracts/notifications/notification-requested.schema.json'
+
+    ReportRequestedEvent:
+      $ref: '../contracts/reporting/report-requested.schema.json'

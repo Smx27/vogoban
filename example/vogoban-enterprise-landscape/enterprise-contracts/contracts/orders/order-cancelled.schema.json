@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/order-cancelled.schema.json",
+  "title": "OrderCancelledEvent",
+  "description": "Published by orders-service to the vg-order-events topic. Contract id orders/order-cancelled. Mirrors Vg.Enterprise.Contracts.Orders.OrderCancelledEvent.",
+  "type": "object",
+  "properties": {
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "cancelledAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "orderId",
+    "customerId",
+    "reason",
+    "cancelledAt"
+  ],
+  "additionalProperties": false
+}

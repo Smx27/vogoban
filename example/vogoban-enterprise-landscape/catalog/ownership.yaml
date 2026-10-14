@@ -1,0 +1,117 @@
+apiVersion: vg.io/v1
+kind: OwnershipCatalog
+metadata:
+  name: vg-enterprise-ownership
+  description: >
+    Explicit subject-to-owner edges. Subjects use the same component:/resource:/contract:/repository:
+    vocabulary as the dependsOn entries in each repository's catalog-info.yaml and in services.yaml,
+    so the ownership graph and the dependency graph can be joined on the same identifiers.
+ownership:
+  - subject: repository:orders-service
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: component:vg-orders-api
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: resource:vg-enterprise-servicebus/vg-order-events
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: resource:vg-enterprise-cosmos/vg-orders
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: contract:orders/order-created
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: contract:orders/order-updated
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: contract:orders/order-cancelled
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: repository:order-processing
+    owner: team:commerce-platform
+    domain: commerce
+  - subject: component:vg-order-processor-function
+    owner: team:commerce-platform
+    domain: commerce
+
+  - subject: repository:customer-service
+    owner: team:customer-platform
+    domain: customer
+  - subject: component:vg-customers-api
+    owner: team:customer-platform
+    domain: customer
+  - subject: resource:vg-enterprise-cosmos/vg-customers
+    owner: team:customer-platform
+    domain: customer
+
+  - subject: repository:notification-service
+    owner: team:integration-platform
+    domain: notification
+  - subject: component:vg-notification-service
+    owner: team:integration-platform
+    domain: notification
+  - subject: resource:vg-enterprise-servicebus/vg-notification-requests
+    owner: team:integration-platform
+    domain: notification
+  - subject: contract:notifications/notification-requested
+    owner: team:integration-platform
+    domain: notification
+  - subject: resource:vgentstorage/vg-notification-payloads
+    owner: team:integration-platform
+    domain: notification
+
+  - subject: repository:reporting-platform
+    owner: team:data-platform
+    domain: reporting
+  - subject: component:vg-reporting-worker
+    owner: team:data-platform
+    domain: reporting
+  - subject: resource:vg-enterprise-servicebus/vg-report-jobs
+    owner: team:data-platform
+    domain: reporting
+  - subject: resource:vg-enterprise-cosmos/vg-reports
+    owner: team:data-platform
+    domain: reporting
+  - subject: resource:vgentstorage/vg-report-artifacts
+    owner: team:data-platform
+    domain: reporting
+  - subject: contract:reporting/report-requested
+    owner: team:data-platform
+    domain: reporting
+
+  - subject: repository:platform-gateway
+    owner: team:platform-engineering
+    domain: platform
+  - subject: component:vg-platform-gateway
+    owner: team:platform-engineering
+    domain: platform
+  - subject: repository:infrastructure
+    owner: team:platform-engineering
+    domain: platform
+  - subject: resource:vg-enterprise-servicebus
+    owner: team:platform-engineering
+    domain: platform
+  - subject: resource:vg-enterprise-cosmos
+    owner: team:platform-engineering
+    domain: platform
+  - subject: resource:vg-enterprise-kv
+    owner: team:platform-engineering
+    domain: platform
+  - subject: resource:vg-enterprise-identity
+    owner: team:platform-engineering
+    domain: platform
+
+  - subject: repository:admin-portal
+    owner: team:digital-experience
+    domain: experience
+  - subject: repository:customer-portal
+    owner: team:digital-experience
+    domain: experience
+  - subject: repository:operations-portal
+    owner: team:digital-experience
+    domain: experience
+
+  - subject: repository:enterprise-contracts
+    owner: team:architecture-guild
+    domain: contracts

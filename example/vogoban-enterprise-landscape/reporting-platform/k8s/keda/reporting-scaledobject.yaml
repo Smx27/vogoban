@@ -1,0 +1,24 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vg-reporting-worker-scaledobject
+  namespace: vg-enterprise
+  labels:
+    app.kubernetes.io/name: vg-reporting-worker
+    app.kubernetes.io/part-of: vg-enterprise
+    vg.io/deployment-unit: vg-reporting-worker
+spec:
+  scaleTargetRef:
+    name: vg-reporting-worker
+  minReplicaCount: 0
+  maxReplicaCount: 10
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        queueName: vg-report-jobs
+        namespace: vg-enterprise-servicebus.servicebus.windows.net
+        messageCount: "5"
+      authenticationRef:
+        name: vg-enterprise-servicebus-auth

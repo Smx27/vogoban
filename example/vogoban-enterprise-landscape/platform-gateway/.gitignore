@@ -1,0 +1,21 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local overrides (never commit real values)
+appsettings.Local.json
+local.settings.json
+.env
+.env.local
+
+# Tooling
+.idea/
+.DS_Store
+TestResults/

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/customers/customer-dto.schema.json",
+  "title": "CustomerDto",
+  "description": "The customer read model served by customer-service and stored in the vg-customers container. Mirrors Vg.Enterprise.Contracts.Customers.CustomerDto.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "email",
+    "createdAt"
+  ],
+  "additionalProperties": false
+}

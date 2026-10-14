@@ -1,0 +1,15 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "ServiceBusConnection": "@Microsoft.KeyVault(SecretUri=https://vg-enterprise-kv.vault.azure.net/secrets/vg-servicebus-connection/)",
+    "Azure__Cosmos__AccountEndpoint": "https://vg-enterprise-cosmos.documents.azure.com:443/",
+    "Azure__Cosmos__DatabaseName": "vg-enterprise",
+    "Azure__Cosmos__OrdersContainer": "vg-orders",
+    "Azure__KeyVault__Enabled": "false",
+    "Azure__KeyVault__VaultUri": "https://vg-enterprise-kv.vault.azure.net/",
+    "Azure__Identity__ManagedIdentityClientId": "00000000-0000-0000-0000-000000000000",
+    "Contracts__SchemaRoot": "../enterprise-contracts/contracts"
+  }
+}

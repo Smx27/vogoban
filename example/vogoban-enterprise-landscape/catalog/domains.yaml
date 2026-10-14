@@ -1,0 +1,56 @@
+apiVersion: vg.io/v1
+kind: DomainCatalog
+metadata:
+  name: vg-enterprise-domains
+  description: Business and technical domains in the VG enterprise landscape.
+domains:
+  - name: commerce
+    displayName: Commerce
+    capabilities:
+      - order capture
+      - order lifecycle
+    teams:
+      - commerce-platform
+  - name: customer
+    displayName: Customer
+    capabilities:
+      - customer profile
+      - notification preferences
+    teams:
+      - customer-platform
+  - name: notification
+    displayName: Notification
+    capabilities:
+      - notification dispatch
+    teams:
+      - integration-platform
+  - name: reporting
+    displayName: Reporting
+    capabilities:
+      - report generation
+      - report distribution
+    teams:
+      - data-platform
+  - name: platform
+    displayName: Platform
+    capabilities:
+      - api gateway
+      - azure platform
+      - kubernetes platform
+    teams:
+      - platform-engineering
+  - name: experience
+    displayName: Digital Experience
+    capabilities:
+      - admin experience
+      - customer experience
+      - operations experience
+    teams:
+      - digital-experience
+  - name: contracts
+    displayName: Contracts
+    capabilities:
+      - shared contracts
+      - event schema governance
+    teams:
+      - architecture-guild

@@ -47,3 +47,4 @@ coverage/
 *.tgz
 .cache/
 test/eShop
+.vogoban

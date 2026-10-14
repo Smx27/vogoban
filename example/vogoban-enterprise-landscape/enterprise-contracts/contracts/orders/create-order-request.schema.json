@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/create-order-request.schema.json",
+  "title": "CreateOrderRequest",
+  "description": "Request body of POST /orders on orders-service. Mirrors Vg.Enterprise.Contracts.Orders.CreateOrderRequest.",
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "string"
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/orderLine"
+      }
+    }
+  },
+  "required": [
+    "customerId",
+    "lines"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "orderLine": {
+      "title": "OrderLineDto",
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "integer"
+        },
+        "unitPrice": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "sku",
+        "quantity",
+        "unitPrice"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

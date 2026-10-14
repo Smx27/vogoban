@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/customers/customer-order-summary.schema.json",
+  "title": "CustomerOrderSummaryDto",
+  "description": "Response body of GET /customers/{id}/orders, which customer-service obtains from the Orders API. Mirrors Vg.Enterprise.Contracts.Customers.CustomerOrderSummaryDto.",
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "string"
+    },
+    "orderCount": {
+      "type": "integer"
+    },
+    "totalValue": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "customerId",
+    "orderCount",
+    "totalValue"
+  ],
+  "additionalProperties": false
+}

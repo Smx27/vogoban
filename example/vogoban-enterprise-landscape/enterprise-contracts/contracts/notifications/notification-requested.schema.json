@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/notifications/notification-requested.schema.json",
+  "title": "NotificationRequestedEvent",
+  "description": "Sent to the vg-notification-requests queue for notification-service to deliver. Contract id notifications/notification-requested. Mirrors Vg.Enterprise.Contracts.Notifications.NotificationRequestedEvent.",
+  "type": "object",
+  "properties": {
+    "notificationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "recipient": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "channel": {
+      "$ref": "#/$defs/notificationChannel"
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "notificationId",
+    "customerId",
+    "recipient",
+    "subject",
+    "body",
+    "channel",
+    "requestedAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "notificationChannel": {
+      "title": "NotificationChannel",
+      "type": "string",
+      "enum": [
+        "email",
+        "sms"
+      ]
+    }
+  }
+}

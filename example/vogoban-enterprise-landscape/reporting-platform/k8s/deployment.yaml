@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vg-reporting-worker
+  namespace: vg-enterprise
+  labels:
+    app.kubernetes.io/name: vg-reporting-worker
+    app.kubernetes.io/part-of: vg-enterprise
+    vg.io/deployment-unit: vg-reporting-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vg-reporting-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vg-reporting-worker
+        app.kubernetes.io/part-of: vg-enterprise
+    spec:
+      containers:
+        - name: vg-reporting-worker
+          image: vogobanplaceholder.azurecr.io/vg-reporting-worker:placeholder
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: vg-reporting-worker-settings
+            - secretRef:
+                name: vg-enterprise-connections
+          env:
+            - name: AZURE_CLIENT_ID
+              value: "00000000-0000-0000-0000-000000000000"
+            - name: ASPNETCORE_HTTP_PORTS
+              value: "8080"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

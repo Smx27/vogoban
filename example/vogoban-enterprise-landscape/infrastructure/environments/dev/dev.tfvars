@@ -1,0 +1,13 @@
+environment                          = "dev"
+location                             = "westeurope"
+service_bus_sku                      = "Standard"
+cosmos_max_autoscale_throughput      = 1000
+storage_replication_type             = "LRS"
+log_analytics_retention_in_days      = 30
+function_app_plan_sku_name           = "Y1"
+container_app_min_replicas           = 0
+container_app_max_replicas           = 2
+notification_service_max_replicas    = 5
+queue_message_count_threshold        = 10
+container_image_registry             = "vgentacr.azurecr.io"
+container_image_tag                  = "1.0.0-dev"

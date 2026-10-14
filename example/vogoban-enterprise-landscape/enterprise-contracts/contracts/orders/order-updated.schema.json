@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/order-updated.schema.json",
+  "title": "OrderUpdatedEvent",
+  "description": "Published by orders-service to the vg-order-events topic. Contract id orders/order-updated. Mirrors Vg.Enterprise.Contracts.Orders.OrderUpdatedEvent.",
+  "type": "object",
+  "properties": {
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "total": {
+      "type": "number"
+    },
+    "status": {
+      "$ref": "#/$defs/orderStatus"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "orderId",
+    "customerId",
+    "total",
+    "status",
+    "updatedAt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "orderStatus": {
+      "title": "OrderStatus",
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "cancelled",
+        "processing"
+      ]
+    }
+  }
+}

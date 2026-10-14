@@ -1,0 +1,217 @@
+openapi: 3.0.1
+info:
+  title: Customers.Api
+  version: '1.0'
+paths:
+  /api/customers/{id}/preferences:
+    get:
+      tags:
+      - CustomerPreferences
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferenceDto'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /api/customers/{id}/summary:
+    get:
+      tags:
+      - Customers
+      operationId: GetCustomerSummary
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerSummaryDto'
+        '404':
+          description: Not Found
+  /api/Customers:
+    get:
+      tags:
+      - Customers
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerDto'
+    post:
+      tags:
+      - Customers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDto'
+  /api/Customers/{id}:
+    get:
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDto'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+  /api/Customers/{id}/orders:
+    get:
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerOrderSummaryDto'
+components:
+  schemas:
+    CreateCustomerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+      additionalProperties: false
+    CustomerDto:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    CustomerOrderSummaryDto:
+      type: object
+      properties:
+        customerId:
+          type: string
+          nullable: true
+        orderCount:
+          type: integer
+          format: int32
+        totalValue:
+          type: number
+          format: double
+      additionalProperties: false
+    CustomerSummaryDto:
+      type: object
+      properties:
+        customerId:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        orderCount:
+          type: integer
+          format: int32
+        totalValue:
+          type: number
+          format: double
+      additionalProperties: false
+    NotificationPreferenceDto:
+      type: object
+      properties:
+        customerId:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+      additionalProperties: false
+    ProblemDetails:
+      type: object
+      properties:
+        type:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        status:
+          type: integer
+          format: int32
+          nullable: true
+        detail:
+          type: string
+          nullable: true
+        instance:
+          type: string
+          nullable: true
+      additionalProperties: {}

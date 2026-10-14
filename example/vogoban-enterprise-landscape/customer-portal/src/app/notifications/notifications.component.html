@@ -1,0 +1,13 @@
+<h2>Notifications</h2>
+
+<p>
+  Where this customer's notifications travel, read from the shared contract package. The gateway
+  exposes no notification route, so nothing on this page is fetched.
+</p>
+
+<dl>
+  @for (entry of entries; track entry.label) {
+    <dt>{{ entry.label }}</dt>
+    <dd>{{ entry.value }}</dd>
+  }
+</dl>

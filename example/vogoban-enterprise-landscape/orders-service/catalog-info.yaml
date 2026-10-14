@@ -1,0 +1,20 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vg-orders-api
+  description: Order domain API. Stores orders in the Cosmos DB orders container and publishes order lifecycle events onto the order events topic.
+  annotations:
+    vg.io/repository: orders-service
+    vg.io/domain: commerce
+    vg.io/deployment-unit: vg-orders-api
+spec:
+  type: service
+  lifecycle: production
+  owner: commerce-platform
+  system: vg-enterprise
+  dependsOn:
+    - component:enterprise-contracts
+    - resource:vg-enterprise-cosmos/vg-orders
+    - resource:vg-enterprise-servicebus/vg-order-events
+    - resource:vg-enterprise-kv/vg-cosmos-connection
+    - resource:vg-enterprise-identity

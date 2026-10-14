@@ -1,0 +1,259 @@
+openapi: 3.0.1
+info:
+  title: Orders.Api
+  version: '1.0'
+paths:
+  /api/Orders:
+    get:
+      tags:
+      - Orders
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderDto'
+    post:
+      tags:
+      - Orders
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+  /api/Orders/{id}:
+    get:
+      tags:
+      - Orders
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+    put:
+      tags:
+      - Orders
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+    delete:
+      tags:
+      - Orders
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: reason
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+  /api/Orders/{id}/cancel:
+    post:
+      tags:
+      - Orders
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: reason
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+  /api/orders/{id}/summary:
+    get:
+      tags:
+      - Orders.Api
+      operationId: GetOrderSummary
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderSummary'
+        '404':
+          description: Not Found
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      properties:
+        customerId:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineDto'
+          nullable: true
+      additionalProperties: false
+    OrderDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineDto'
+          nullable: true
+        total:
+          type: number
+          format: double
+        status:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    OrderLineDto:
+      type: object
+      properties:
+        sku:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+          format: int32
+        unitPrice:
+          type: number
+          format: double
+      additionalProperties: false
+    OrderSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          nullable: true
+        lineCount:
+          type: integer
+          format: int32
+        total:
+          type: number
+          format: double
+        status:
+          type: string
+          nullable: true
+      additionalProperties: false

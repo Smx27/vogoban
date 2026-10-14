@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Vg.Enterprise.PlatformGateway</RootNamespace>
+    <AssemblyName>PlatformGateway.Api</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\enterprise-contracts\dotnet\Enterprise.Contracts\Enterprise.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

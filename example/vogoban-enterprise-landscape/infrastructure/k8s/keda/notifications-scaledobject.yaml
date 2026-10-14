@@ -1,0 +1,24 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vg-notification-service
+  namespace: vg-enterprise
+  labels:
+    app.kubernetes.io/name: vg-notification-service
+    app.kubernetes.io/part-of: vg-enterprise
+    app.kubernetes.io/managed-by: infrastructure
+spec:
+  scaleTargetRef:
+    name: vg-notification-service
+  minReplicaCount: 1
+  maxReplicaCount: 10
+  pollingInterval: 30
+  cooldownPeriod: 300
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        namespace: vg-enterprise-servicebus.servicebus.windows.net
+        queueName: vg-notification-requests
+        messageCount: "10"
+      authenticationRef:
+        name: vg-enterprise-servicebus-auth

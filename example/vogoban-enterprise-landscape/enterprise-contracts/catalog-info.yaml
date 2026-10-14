@@ -1,0 +1,14 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: enterprise-contracts
+  description: Shared DTOs, event contracts, JSON Schemas and the AsyncAPI document for the VG enterprise landscape.
+  annotations:
+    vg.io/repository: enterprise-contracts
+    vg.io/domain: contracts
+    vg.io/deployment-unit: none
+spec:
+  type: library
+  lifecycle: production
+  owner: architecture-guild
+  system: vg-enterprise

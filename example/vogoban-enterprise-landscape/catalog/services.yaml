@@ -1,0 +1,96 @@
+apiVersion: vg.io/v1
+kind: ServiceCatalog
+metadata:
+  name: vg-enterprise-services
+  description: Every deployable service in the landscape, with the repository that owns it and the shared resources it depends on.
+services:
+  - name: vg-platform-gateway
+    repository: platform-gateway
+    team: platform-engineering
+    domain: platform
+    kind: api
+    dependsOn:
+      - component:vg-orders-api
+      - component:vg-customers-api
+      - component:vg-reporting-worker
+  - name: vg-orders-api
+    repository: orders-service
+    team: commerce-platform
+    domain: commerce
+    kind: api
+    publishes:
+      - contract:orders/order-created
+      - contract:orders/order-updated
+      - contract:orders/order-cancelled
+    dependsOn:
+      - resource:vg-enterprise-servicebus/vg-order-events
+      - resource:vg-enterprise-cosmos/vg-orders
+      - resource:vg-enterprise-kv/vg-cosmos-connection
+  - name: vg-customers-api
+    repository: customer-service
+    team: customer-platform
+    domain: customer
+    kind: api
+    dependsOn:
+      - resource:vg-enterprise-cosmos/vg-customers
+      - component:vg-orders-api
+  - name: vg-notification-service
+    repository: notification-service
+    team: integration-platform
+    domain: notification
+    kind: worker
+    consumes:
+      - contract:orders/order-created
+      - contract:notifications/notification-requested
+    dependsOn:
+      - resource:vg-enterprise-servicebus/vg-order-events
+      - resource:vg-enterprise-servicebus/vg-notifications
+      - resource:vg-enterprise-servicebus/vg-notification-requests
+      - resource:vgentstorage/vg-notification-payloads
+      - component:vg-customers-api
+  - name: vg-order-processor-function
+    repository: order-processing
+    team: commerce-platform
+    domain: commerce
+    kind: function
+    consumes:
+      - contract:orders/order-created
+    dependsOn:
+      - resource:vg-enterprise-servicebus/vg-order-events
+      - resource:vg-enterprise-servicebus/vg-order-processor
+      - resource:vg-enterprise-cosmos/vg-orders
+  - name: vg-reporting-worker
+    repository: reporting-platform
+    team: data-platform
+    domain: reporting
+    kind: worker
+    publishes:
+      - contract:reporting/report-requested
+    consumes:
+      - contract:reporting/report-requested
+    dependsOn:
+      - resource:vg-enterprise-servicebus/vg-report-jobs
+      - resource:vg-enterprise-cosmos/vg-reports
+      - resource:vgentstorage/vg-report-artifacts
+  - name: admin-portal
+    repository: admin-portal
+    team: digital-experience
+    domain: experience
+    kind: website
+    dependsOn:
+      - component:vg-platform-gateway
+  - name: customer-portal
+    repository: customer-portal
+    team: digital-experience
+    domain: experience
+    kind: website
+    dependsOn:
+      - component:vg-platform-gateway
+  - name: operations-portal
+    repository: operations-portal
+    team: digital-experience
+    domain: experience
+    kind: website
+    dependsOn:
+      - component:vg-platform-gateway
+      - component:vg-reporting-worker

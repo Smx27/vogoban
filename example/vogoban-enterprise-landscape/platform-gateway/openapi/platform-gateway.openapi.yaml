@@ -1,0 +1,331 @@
+openapi: 3.0.1
+info:
+  title: PlatformGateway.Api
+  version: '1.0'
+paths:
+  /api/Customers:
+    get:
+      tags:
+      - Customers
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerDto'
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerDto'
+            text/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerDto'
+  /api/Customers/{id}:
+    get:
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/CustomerDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/CustomerDto'
+  /api/Customers/{id}/orders:
+    get:
+      tags:
+      - Customers
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/CustomerOrderSummaryDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerOrderSummaryDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/CustomerOrderSummaryDto'
+  /api/Orders:
+    get:
+      tags:
+      - Orders
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrderDto'
+  /api/Orders/{id}:
+    get:
+      tags:
+      - Orders
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+  /api/Orders/{id}/cancel:
+    post:
+      tags:
+      - Orders
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/OrderDto'
+  /api/orders:
+    post:
+      tags:
+      - PlatformGateway.Api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+  /api/gateway/info:
+    get:
+      tags:
+      - PlatformGateway.Api
+      responses:
+        '200':
+          description: OK
+  /api/Reports:
+    get:
+      tags:
+      - Reports
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportDto'
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportDto'
+            text/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReportDto'
+  /api/Reports/requests:
+    post:
+      tags:
+      - Reports
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequestedEvent'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequestedEvent'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/ReportRequestedEvent'
+      responses:
+        '200':
+          description: OK
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/ReportDto'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportDto'
+            text/json:
+              schema:
+                $ref: '#/components/schemas/ReportDto'
+components:
+  schemas:
+    CreateOrderRequest:
+      type: object
+      properties:
+        customerId:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineDto'
+          nullable: true
+      additionalProperties: false
+    CustomerDto:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    CustomerOrderSummaryDto:
+      type: object
+      properties:
+        customerId:
+          type: string
+          nullable: true
+        orderCount:
+          type: integer
+          format: int32
+        totalValue:
+          type: number
+          format: double
+      additionalProperties: false
+    OrderDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customerId:
+          type: string
+          nullable: true
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderLineDto'
+          nullable: true
+        total:
+          type: number
+          format: double
+        status:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    OrderLineDto:
+      type: object
+      properties:
+        sku:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+          format: int32
+        unitPrice:
+          type: number
+          format: double
+      additionalProperties: false
+    ReportDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        reportType:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        artifactPath:
+          type: string
+          nullable: true
+        requestedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+    ReportRequestedEvent:
+      type: object
+      properties:
+        reportId:
+          type: string
+          format: uuid
+        reportType:
+          type: string
+          nullable: true
+        requestedBy:
+          type: string
+          nullable: true
+        requestedAt:
+          type: string
+          format: date-time
+      additionalProperties: false

@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vg-order-processor-function
+  description: Azure Function that projects order-created events from the vg-order-events topic into the vg-orders Cosmos container.
+  annotations:
+    vg.io/repository: order-processing
+    vg.io/domain: commerce
+    vg.io/deployment-unit: vg-order-processor-function
+spec:
+  type: worker
+  lifecycle: production
+  owner: commerce-platform
+  system: vg-enterprise
+  dependsOn:
+    - component:vg-orders-api
+    - resource:vg-enterprise-servicebus

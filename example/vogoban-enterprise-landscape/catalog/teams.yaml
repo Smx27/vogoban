@@ -1,0 +1,52 @@
+apiVersion: vg.io/v1
+kind: TeamCatalog
+metadata:
+  name: vg-enterprise-teams
+  description: Teams in the VG enterprise landscape and the repositories they own.
+teams:
+  - name: commerce-platform
+    displayName: Commerce Platform
+    domain: commerce
+    contact: commerce-platform@example.invalid
+    repositories:
+      - orders-service
+      - order-processing
+  - name: customer-platform
+    displayName: Customer Platform
+    domain: customer
+    contact: customer-platform@example.invalid
+    repositories:
+      - customer-service
+  - name: integration-platform
+    displayName: Integration Platform
+    domain: notification
+    contact: integration-platform@example.invalid
+    repositories:
+      - notification-service
+  - name: data-platform
+    displayName: Data Platform
+    domain: reporting
+    contact: data-platform@example.invalid
+    repositories:
+      - reporting-platform
+  - name: platform-engineering
+    displayName: Platform Engineering
+    domain: platform
+    contact: platform-engineering@example.invalid
+    repositories:
+      - platform-gateway
+      - infrastructure
+  - name: digital-experience
+    displayName: Digital Experience
+    domain: experience
+    contact: digital-experience@example.invalid
+    repositories:
+      - admin-portal
+      - customer-portal
+      - operations-portal
+  - name: architecture-guild
+    displayName: Architecture Guild
+    domain: contracts
+    contact: architecture-guild@example.invalid
+    repositories:
+      - enterprise-contracts

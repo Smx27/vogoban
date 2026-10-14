@@ -1,0 +1,20 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vg-customers-api
+  description: Customer service - owns the vg-customers container and answers customer, preference and order-summary requests.
+  annotations:
+    vg.io/repository: customer-service
+    vg.io/domain: customers
+    vg.io/deployment-unit: vg-customers-api
+spec:
+  type: service
+  lifecycle: production
+  owner: customers-team
+  system: vg-enterprise
+  dependsOn:
+    - component:enterprise-contracts
+    - component:vg-orders-api
+    - resource:azure-cosmosdb-account-vg-enterprise-cosmos
+    - resource:azure-keyvault-vault-vg-enterprise-kv
+    - resource:azure-managedidentity-vg-enterprise-identity

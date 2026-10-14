@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vg-reporting-worker-settings
+  namespace: vg-enterprise
+  labels:
+    app.kubernetes.io/name: vg-reporting-worker
+    app.kubernetes.io/part-of: vg-enterprise
+data:
+  Azure__Cosmos__AccountEndpoint: https://vg-enterprise-cosmos.documents.azure.com:443/
+  Azure__Cosmos__DatabaseName: vg-enterprise
+  Azure__Cosmos__ReportsContainer: vg-reports
+  Azure__ServiceBus__FullyQualifiedNamespace: vg-enterprise-servicebus.servicebus.windows.net
+  Azure__ServiceBus__ReportJobsQueue: vg-report-jobs
+  Azure__Storage__BlobServiceUri: https://vgentstorage.blob.core.windows.net/
+  Azure__Storage__ReportArtifactsContainer: vg-report-artifacts
+  Azure__KeyVault__Enabled: "false"
+  Azure__KeyVault__VaultUri: https://vg-enterprise-kv.vault.azure.net/
+  Azure__Identity__ManagedIdentityClientId: 00000000-0000-0000-0000-000000000000
+  Contracts__SchemaRoot: ../enterprise-contracts/contracts

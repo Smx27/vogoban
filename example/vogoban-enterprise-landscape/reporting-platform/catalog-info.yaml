@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vg-reporting-worker
+  description: KEDA-scaled report job consumer and the reporting API the operations portal reads.
+  annotations:
+    vg.io/repository: reporting-platform
+    vg.io/domain: reporting
+    vg.io/deployment-unit: vg-reporting-worker
+spec:
+  type: worker
+  lifecycle: production
+  owner: data-platform
+  system: vg-enterprise
+  dependsOn:
+    - resource:vg-enterprise-servicebus
+    - resource:vg-enterprise-cosmos

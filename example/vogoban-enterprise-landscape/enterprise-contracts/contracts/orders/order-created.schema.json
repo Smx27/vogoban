@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/order-created.schema.json",
+  "title": "OrderCreatedEvent",
+  "description": "Published by orders-service to the vg-order-events topic. Contract id orders/order-created. Mirrors Vg.Enterprise.Contracts.Orders.OrderCreatedEvent.",
+  "type": "object",
+  "properties": {
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "total": {
+      "type": "number"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "orderId",
+    "customerId",
+    "total",
+    "createdAt"
+  ],
+  "additionalProperties": false
+}

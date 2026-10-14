@@ -1,0 +1,15 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: customer-portal
+  description: Customer experience - an Angular 22 portal that reads the customer-scoped gateway routes and generates its API paths from the gateway's published OpenAPI document.
+  annotations:
+    vg.io/repository: customer-portal
+    vg.io/domain: experience
+spec:
+  type: website
+  lifecycle: production
+  owner: digital-experience
+  system: vg-enterprise
+  dependsOn:
+    - component:vg-platform-gateway

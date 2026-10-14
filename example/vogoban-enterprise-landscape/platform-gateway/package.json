@@ -1,0 +1,11 @@
+{
+  "name": "platform-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Verification scripts for the platform-gateway HTTP orchestration hub.",
+  "type": "module",
+  "scripts": {
+    "verify:contracts": "node scripts/verify-downstream-contracts.mjs"
+  },
+  "license": "UNLICENSED"
+}

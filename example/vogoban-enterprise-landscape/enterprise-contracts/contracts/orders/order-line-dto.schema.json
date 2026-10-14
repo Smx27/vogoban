@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/order-line-dto.schema.json",
+  "title": "OrderLineDto",
+  "description": "One line of an order: the SKU, the quantity ordered and the unit price. Mirrors Vg.Enterprise.Contracts.Orders.OrderLineDto.",
+  "type": "object",
+  "properties": {
+    "sku": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "unitPrice": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "sku",
+    "quantity",
+    "unitPrice"
+  ],
+  "additionalProperties": false
+}

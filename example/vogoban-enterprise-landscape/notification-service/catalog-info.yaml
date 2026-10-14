@@ -1,0 +1,21 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: vg-notification-service
+  description: Notification consumer that turns notification requests and order events into stored dispatch payloads.
+  annotations:
+    vg.io/repository: notification-service
+    vg.io/domain: notification
+    vg.io/deployment-unit: vg-notification-service
+spec:
+  type: worker
+  lifecycle: production
+  owner: integration-platform
+  system: vg-enterprise
+  dependsOn:
+    - component:vg-customers-api
+    - resource:vg-enterprise-servicebus/vg-order-events
+    - resource:vg-enterprise-servicebus/vg-notifications
+    - resource:vg-enterprise-servicebus/vg-notification-requests
+    - resource:vgentstorage/vg-notification-payloads
+    - resource:vg-enterprise-kv
