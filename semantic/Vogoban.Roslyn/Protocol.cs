@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Vogoban.Roslyn;
 
-public sealed record AnalysisRequest(string RepositoryRoot, List<ProjectRequest> Projects, long? MaxSourceFileBytes = null);
+public sealed record AnalysisRequest(string RepositoryRoot, List<ProjectRequest> Projects, long? MaxSourceFileBytes = null, List<string>? ExcludedSourcePatterns = null);
 
 public sealed record ProjectRequest(
     string Id,

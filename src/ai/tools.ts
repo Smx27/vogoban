@@ -1,7 +1,7 @@
 import { ref as entityRef, type EntityRef } from "../analysis/graph.ts";
 import { propagate, type ImpactResult } from "../analysis/impact.ts";
 import { blastRadius, type Score } from "../analysis/risk.ts";
-import { findPaths } from "../analysis/traversal.ts";
+import { findPaths, traverse } from "../analysis/traversal.ts";
 import { diffSnapshots, snapshotFor, type GraphDiff } from "../analysis/diff.ts";
 import { API_CHANGE_KINDS, apiImpact, messageImpact, repositoryImpact, serviceImpact, type Linked } from "../analysis/views.ts";
 import { ENTITY_KINDS, isRelationshipType, type Entity, type EntityKind, type RelationshipType } from "../graph/model.ts";
@@ -341,6 +341,51 @@ export const TOOLS: ToolDefinition[] = [
         data: { entity: access.candidate(e), layer: e.layer, symbolKey: e.symbolKey, project: e.projectId, external: e.external, metadata, temporal: meta ? null : access.store.temporal(e.id), relationshipsByType: count(visible, (r) => r.type), relationships: visible.slice(0, limit).map((r) => ({ id: r.id, type: r.type, direction: r.sourceId === e.id ? "out" : "in", other: others.get(r.sourceId === e.id ? r.targetId : r.sourceId) ? access.lite(others.get(r.sourceId === e.id ? r.targetId : r.sourceId)!) : null, evidence: r.evidence, scope: "category" in r ? "meta" : "repository" })) },
         evidence: [access.fromEntity(e, `${label(access.lite(e))} exists`, 1, "get_entity"), ...visible.slice(0, limit).map((r) => access.fromRelationship(r, others.get(r.sourceId) ?? null, others.get(r.targetId) ?? null, 2, "get_entity"))],
         truncated: visible.length > limit,
+      };
+    },
+  },
+  {
+    name: "get_neighborhood",
+    title: "Get graph neighborhood",
+    description: "Return a bounded, focused architecture subgraph around one entity. This is a direct graph traversal, not an inferred architecture summary; every edge retains evidence and provenance.",
+    input: {
+      entity: ENTITY,
+      kind: KIND,
+      repository: REPO,
+      direction: { type: "string", enum: ["forward", "reverse", "both"], default: "both", description: "Relationship direction to follow" },
+      depth: { ...DEPTH, default: 2 },
+      types: { type: "string[]", maxItems: 20, description: "Restrict to actual relationship types" },
+      targetKinds: { ...KIND, description: "Restrict reached entity kinds" },
+      environment: ENV,
+      limit: LIMIT,
+    },
+    run(access, args) {
+      const entity = subject(access, args, "entity");
+      const types = (args.types as string[] | undefined)?.map((type) => type.toUpperCase());
+      if (types?.some((type) => !isRelationshipType(type))) throw new ScopeError(`unknown relationship type(s): ${types.filter((type) => !isRelationshipType(type)).join(", ")}`);
+      const limit = Math.min(Number(args.limit ?? 40), access.limits.maxResults);
+      const result = traverse(access.analysisGraph(access.environment(args.environment)), entity.id, {
+        direction: args.direction ?? "both",
+        types: types as RelationshipType[] | undefined,
+        kinds: args.targetKinds as EntityKind[] | undefined,
+        maxDepth: Math.min(Number(args.depth ?? 2), access.limits.maxDepth),
+        maxNodes: Math.min(access.limits.maxNodes, limit),
+      });
+      const reached = result.reached.filter((row) => access.allowed(row.entity.repositoryId)).slice(0, limit);
+      const nodes = [entity, ...reached.map((row) => row.entity)].map((item) => access.lite(item));
+      const edges = new Map<string, { id: string; type: string; from: EntityRef; to: EntityRef; direction: string; evidence: string; confidence: number; scope: string; provenance: unknown }>();
+      for (const row of reached) for (const step of row.path.steps) edges.set(step.relationship.id, {
+        id: step.relationship.id, type: step.relationship.type, from: step.from, to: step.to, direction: step.relationship.direction,
+        evidence: step.relationship.evidence, confidence: step.relationship.confidence, scope: step.relationship.graphScope, provenance: step.relationship.provenance,
+      });
+      const evidence = [access.fromEntity(entity, `${label(access.lite(entity))} is the neighborhood center`, 1, "get_neighborhood"), ...reached.map((row) => access.fromPath(row.path, 2, "get_neighborhood"))];
+      return {
+        status: reached.length ? "OK" : "EMPTY",
+        summary: [`Neighborhood of ${label(access.lite(entity))}: ${reached.length} related entities, ${edges.size} relationships within ${args.direction ?? "both"} traversal depth ${Math.min(Number(args.depth ?? 2), access.limits.maxDepth)}.`, ...(result.truncated ? [`Traversal stopped at the configured node limit.`] : []), ...(reached.length ? [] : ["No recorded relationships match this bounded query."])],
+        data: { center: access.lite(entity), direction: args.direction ?? "both", nodes, edges: [...edges.values()], depth: Math.min(Number(args.depth ?? 2), access.limits.maxDepth) },
+        evidence,
+        unknowns: [...(result.truncated ? ["result set was truncated; additional relationships may exist"] : []), ...(reached.length ? [] : ["absence means no matching relationship was found in the analyzed graph, not proof of no runtime relationship"])],
+        truncated: result.truncated,
       };
     },
   },

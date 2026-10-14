@@ -208,3 +208,6 @@ curl -s https://vogoban.example.com/api/v1/t/contoso/mcp -H "Authorization: Bear
 - [AI assistant](ai.md)
 - [AI command reference](../cli/ai.md), [Platform command reference](../cli/platform.md)
 - [AI and MCP architecture](../architecture/ai-mcp.md), [Security model](../architecture/security-model.md)
+# Focused graph exploration
+
+The read-only `get_neighborhood` tool returns a bounded subgraph around one resolved entity. It accepts direction, depth, relationship type and target-kind filters, and returns nodes, relationship evidence, and provenance. Use it instead of requesting a whole repository graph when an agent needs to understand a service, event, resource, or API in context.

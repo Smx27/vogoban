@@ -5,8 +5,9 @@ import { diffSnapshots, snapshotFor } from "../analysis/diff.ts";
 import type { Logger } from "../log.ts";
 import type { CatalogEntry } from "../graph/model.ts";
 import type { GraphStore } from "../store/store.ts";
-import type { Plugin } from "../plugins/types.ts";
-import { analyzeRepository, ANALYZER_VERSION, AnalysisError } from "../pipeline/analyze.ts";
+import type { AnalysisOptions, Plugin } from "../plugins/types.ts";
+import { selectAnalyzerPlugins } from "../plugins/registry.ts";
+import { analyzeRepository, ANALYZER_VERSION, AnalysisError, repositoryAnalysisSettings } from "../pipeline/analyze.ts";
 import { GRAPH_SCHEMA_VERSION } from "../graph/model.ts";
 import { loadConfig } from "../pipeline/config.ts";
 import { discoverRepository, GitStateError, repositoryRoot } from "../pipeline/discovery.ts";
@@ -14,7 +15,8 @@ import { changeSetFromGit, isGitRepository, resolveCommit } from "./git.ts";
 import { changeSetFingerprint, summarizeChangeSet, type ChangeSet } from "./changeset.ts";
 import { planIncremental, type Fingerprints, type FullRebuildCode, type IncrementalPlan, type SyncMode } from "./planner.ts";
 
-export interface SyncOptions {
+export interface SyncOptions extends AnalysisOptions {
+  incremental?: boolean;
   /** working-tree (default), since <commit>, commit-range <from>..<to>, or staged. */
   mode?: "working-tree" | "since" | "commit-range" | "staged";
   sinceCommit?: string | null;
@@ -33,12 +35,12 @@ export interface SyncMetrics {
   changedFiles: number;
   filesAnalyzed: number;
   affectedProjects: number;
-  entitiesCreated: number;
-  entitiesUpdated: number;
-  entitiesDeleted: number;
-  relationshipsCreated: number;
-  relationshipsUpdated: number;
-  relationshipsDeleted: number;
+  entitiesCreated: number | null;
+  entitiesUpdated: number | null;
+  entitiesDeleted: number | null;
+  relationshipsCreated: number | null;
+  relationshipsUpdated: number | null;
+  relationshipsDeleted: number | null;
   durationMs: number;
   /** Baseline full-analysis duration for this repository, when a prior run exists. */
   baselineDurationMs: number | null;
@@ -90,17 +92,17 @@ interface SyncHistoryEntry {
 
 const HISTORY_LIMIT = 50;
 
-export function configFingerprint(config: ReturnType<typeof loadConfig>): string {
+export function configFingerprint(config: ReturnType<typeof loadConfig>, settingsFingerprint?: string): string {
   const { errors: _errors, ...stable } = config;
-  return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16);
+  return createHash("sha256").update(JSON.stringify(settingsFingerprint === undefined ? stable : { config: stable, analysisSettings: settingsFingerprint })).digest("hex").slice(0, 16);
 }
 
-export function currentFingerprints(config: ReturnType<typeof loadConfig>, plugins: readonly Plugin[]): Fingerprints {
+export function currentFingerprints(config: ReturnType<typeof loadConfig>, plugins: readonly Plugin[], settingsFingerprint?: string): Fingerprints {
   return {
     analyzerVersion: ANALYZER_VERSION,
     schemaVersion: GRAPH_SCHEMA_VERSION,
     pluginVersions: Object.fromEntries(plugins.map((p) => [p.id, p.version])),
-    configFingerprint: configFingerprint(config),
+    configFingerprint: configFingerprint(config, settingsFingerprint),
   };
 }
 
@@ -184,10 +186,14 @@ async function syncUnlocked(
     if (ref && !/^\w[\w./@{}^~+-]*$/.test(ref)) throw new SyncUsageError(`invalid commit reference '${ref.slice(0, 80)}'`);
   const root = repositoryRoot(path);
   const config = loadConfig(root);
+  const settings = repositoryAnalysisSettings(root, options);
+  plugins = selectAnalyzerPlugins(plugins, settings.options.analyzers);
   const repo = discoverRepository(path, config.repository);
   const catalog = store.getCatalog(repo.id);
-  const fingerprints = currentFingerprints(config, plugins);
+  const fingerprints = currentFingerprints(config, plugins, settings.fingerprint);
   const previous = lastSync(store, repo.id);
+  const published = syncHistory(store, repo.id).findLast((entry) => entry.status !== "FAILED");
+  const baselineSettings = store.getBaseline(`analysis-settings:${repo.id}`)?.data;
   const timestamp = new Date().toISOString();
 
   // Git identity integrity: a checkout registered under a remote-derived identity must never be re-registered under a
@@ -245,11 +251,11 @@ async function syncUnlocked(
 
   // 2. Plan (deterministic; decides noop / incremental / full with explicit reason).
   const plan = planIncremental(store, catalog, changeSet, fingerprints, {
-    forceFull: options.forceFull,
-    semantic: options.semantic ?? true,
+    forceFull: options.forceFull || !settings.options.incremental,
+    semantic: settings.options.semantic,
     forceReason: changeSetError ? `change set unavailable (${changeSetError.error}); full rebuild is the only safe option` : null,
     forceCode: changeSetError?.code,
-    previousConfigFingerprint: previous?.configFingerprint ?? null,
+    previousConfigFingerprint: published?.configFingerprint ?? configFingerprint(config, typeof baselineSettings === "string" ? baselineSettings : undefined),
   });
   const fallbackReason = plan.mode === "full" && !options.forceFull && catalog?.graphVersion ? plan.reason : null;
   const fallbackCode = fallbackReason ? (plan.code ?? null) : null;
@@ -274,27 +280,34 @@ async function syncUnlocked(
   }
 
   // Capture the "before" snapshot for reconciliation metrics and before/after diff.
-  const beforeSnapshot = previousGraphVersion ? snapshotFor(store, previousGraphVersion, "repository", repo.id) : null;
+  const beforeSnapshot = settings.options.snapshots && previousGraphVersion ? snapshotFor(store, previousGraphVersion, "repository", repo.id) : null;
 
   // 4-7. Invalidate + Analyze + Reconcile + Version (delegated to the deterministic engine).
   try {
-    const { run, repositoryId } = await analyzeRepository(path, store, plugins, { semantic: options.semantic ?? true }, log);
+    const { run, repositoryId } = await analyzeRepository(path, store, plugins, settings.options, log);
+    store.saveBaseline(`analysis-settings:${repositoryId}`, settings.fingerprint ?? null);
     const newCatalog = store.getCatalog(repositoryId);
     const graphVersion = newCatalog?.graphVersion ?? null;
-    const afterSnapshot = graphVersion ? snapshotFor(store, graphVersion, "repository", repo.id) : null;
+    const afterSnapshot = settings.options.snapshots && graphVersion ? snapshotFor(store, graphVersion, "repository", repo.id) : null;
+    const measured = afterSnapshot !== null && (beforeSnapshot !== null || previousGraphVersion === null);
 
     let entitiesCreated = 0, entitiesUpdated = 0, entitiesDeleted = 0, relsCreated = 0, relsUpdated = 0, relsDeleted = 0;
     if (beforeSnapshot && afterSnapshot && beforeSnapshot.id !== afterSnapshot.id) {
       const d = diffSnapshots(store, beforeSnapshot.id, afterSnapshot.id);
       entitiesCreated = d.entities.added.length; entitiesUpdated = d.entities.changed.length; entitiesDeleted = d.entities.removed.length;
       relsCreated = d.relationships.added.length; relsUpdated = d.relationships.changed.length; relsDeleted = d.relationships.removed.length;
-    } else if (!beforeSnapshot && afterSnapshot) {
+    } else if (!previousGraphVersion && afterSnapshot) {
       entitiesCreated = afterSnapshot.entities; relsCreated = afterSnapshot.relationships;
     }
 
     const metrics: SyncMetrics = {
       changedFiles: summarizeChangeSet(changeSet).total, filesAnalyzed: run.stats.files ?? 0, affectedProjects: plan.affected.projects.length,
-      entitiesCreated, entitiesUpdated, entitiesDeleted, relationshipsCreated: relsCreated, relationshipsUpdated: relsUpdated, relationshipsDeleted: relsDeleted,
+      entitiesCreated: measured ? entitiesCreated : null,
+      entitiesUpdated: measured ? entitiesUpdated : null,
+      entitiesDeleted: measured ? entitiesDeleted : null,
+      relationshipsCreated: measured ? relsCreated : null,
+      relationshipsUpdated: measured ? relsUpdated : null,
+      relationshipsDeleted: measured ? relsDeleted : null,
       durationMs: run.stats.durationMs ?? 0, baselineDurationMs: previous?.metrics.baselineDurationMs ?? emptyMetrics.baselineDurationMs,
     };
     const result: SyncResult = {

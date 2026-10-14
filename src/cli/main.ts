@@ -27,7 +27,7 @@ import { CYCLE_KINDS, findCycleSet, findOrphans, type CycleKind } from "../analy
 import { loadPolicies, SEVERITIES, type PolicySet, type Severity as RuleSeverity } from "../governance/policy.ts";
 import { evaluate, governanceDiff, snapshotSet, type GovernanceResult, type Violation } from "../governance/evaluate.ts";
 import { API_CHANGE_KINDS, apiImpact, messageImpact, repositoryImpact, serviceImpact } from "../analysis/views.ts";
-import { copyFileSync, existsSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, realpathSync, rmSync } from "node:fs";
 import { GraphQuery } from "../query/graph-query.ts";
 import { loadEnterpriseConfig, type EnterpriseConfig } from "../enterprise/config.ts";
 import { buildEnterpriseModel, ownerOf, posture, type EnterpriseModel, type SecurityFinding } from "../enterprise/model.ts";
@@ -49,13 +49,19 @@ import { McpServer } from "../ai/mcp.ts";
 import { answerText, planText } from "./ai-format.ts";
 import { dirname, join, resolve } from "node:path";
 import { readFileSync } from "node:fs";
+import { configureWorkspace, defaultWorkspaceConfig, detectRepository, initializeWorkspace, loadWorkspaceConfig, WorkspaceConfigError, workspaceConfigPath, workspacePath } from "../local/workspace.ts";
+import { applyWorkspaceOverrides, interactiveTerminal, offerGraph, terminalStyle, workspaceOverrides, workspaceSummary, workspaceWizard } from "./interactive.ts";
+import { serveLocalGraph } from "../local/server.ts";
 
 const HELP = `vogoban - .NET-first enterprise code and architecture graph
 
 Usage: vogoban <command> [args] [options]
 
 Analysis
+  init [path]                    Initialize private, repository-local .vogoban state (safe to re-run)
   analyze <path>                 Analyze a repository into the graph store (--no-semantic for syntax only)
+  configure [path]               Reconfigure local analyzer groups and analysis preferences safely
+  graph [path]                   Open the local interactive architecture graph (graph sync/status/... remain available)
 
 Inspection
   repos                          List repositories in the store (the MetaGraph catalog)
@@ -239,8 +245,16 @@ Options
   --limit <n>        Maximum rows
   --offline          Refuse any non-local network (external AI endpoints); local graph, MCP and local models still work
   --mode <m>         LOCAL (default) | SELF_HOSTED | HOSTED; shown by 'privacy' (local usage needs no mode and no account)
-  --log-level <lvl>  debug|info|warn|error (default info for analyze, warn otherwise)
+  --log-level <lvl>  quiet|normal|verbose|debug (also accepts info|warn|error; default normal for analyze)
   --log-json         Structured JSON logs on stderr
+  --analyzers <ids>  Override analyzer groups: dotnet,frontend,azure,infrastructure,contracts,ownership (or none)
+  --exclude <globs>  Override local discovery exclusions (comma-separated, repository-relative)
+  --semantic | --no-semantic     Enable or disable semantic language analysis
+  --snapshots | --no-snapshots   Enable or disable new snapshot capture; existing snapshots are preserved
+  --incremental | --no-incremental  Allow incremental graph sync or force full sync (analyze is always full)
+  --open | --no-open Open or skip the graph after interactive analysis
+  --no-interactive   Disable terminal prompts; suitable for scripts and CI
+  --yes              Accept init defaults / skip prompts (configure still needs explicit setting flags)
   --version          Print the vogoban version and exit`;
 
 const PACKAGE_VERSION = (JSON.parse(readFileSync(join(import.meta.dir, "../../package.json"), "utf8")) as { version: string }).version;
@@ -264,6 +278,15 @@ const { values: opts, positionals } = parseCli(() => parseArgs({
     version: { type: "boolean", default: false },
     db: { type: "string" },
     json: { type: "boolean", default: false },
+    analyzers: { type: "string" },
+    semantic: { type: "boolean" },
+    incremental: { type: "boolean" },
+    "no-incremental": { type: "boolean", default: false },
+    snapshots: { type: "boolean" },
+    "no-snapshots": { type: "boolean", default: false },
+    "no-open": { type: "boolean", default: false },
+    "no-interactive": { type: "boolean", default: false },
+    yes: { type: "boolean", default: false },
     repo: { type: "string" },
     depth: { type: "string" },
     type: { type: "string" },
@@ -349,6 +372,7 @@ const { values: opts, positionals } = parseCli(() => parseArgs({
     "trust-repository": { type: "boolean", default: false },
     "strict-incremental": { type: "boolean", default: false },
     "hook-mode": { type: "string" },
+    open: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 }));
@@ -389,7 +413,9 @@ function renderSync(r: SyncResult): string {
   if (r.status === "SUCCESS") {
     lines.push(
       `  changed files ${m.changedFiles}  ·  analyzed ${m.filesAnalyzed}  ·  affected projects ${m.affectedProjects}`,
-      `  reconciled entities +${m.entitiesCreated} ~${m.entitiesUpdated} -${m.entitiesDeleted}  relationships +${m.relationshipsCreated} ~${m.relationshipsUpdated} -${m.relationshipsDeleted}`,
+      m.entitiesCreated === null
+        ? "  reconciliation counts unavailable (no before/after snapshot comparison)"
+        : `  reconciled entities +${m.entitiesCreated} ~${m.entitiesUpdated} -${m.entitiesDeleted}  relationships +${m.relationshipsCreated} ~${m.relationshipsUpdated} -${m.relationshipsDeleted}`,
       `  duration ${m.durationMs} ms${m.baselineDurationMs ? ` (baseline full ${m.baselineDurationMs} ms)` : ""}`,
       r.plan.affected.domains.length ? `  domains: ${r.plan.affected.domains.join(", ")}` : null,
       r.diffSnapshotFrom && r.diffSnapshotTo ? `  diff: vogoban diff --from ${r.diffSnapshotFrom} --to ${r.diffSnapshotTo}` : null,
@@ -495,9 +521,48 @@ async function main() {
     }
     return;
   }
+  if (command === "init" || command === "configure") {
+    const detected = detectRepository(args[0] ?? ".");
+    const existing = loadWorkspaceConfig(detected.root);
+    const overrides = workspaceOverrides(opts);
+    const hasOverrides = Object.keys(overrides.analysis).length > 0 || Object.keys(overrides.ui).length > 0;
+    if (command === "configure" && !existing) throw new CliError(`No local workspace found. Run vogoban init ${detected.root} first.`);
+    if (command === "init" && existing && hasOverrides) throw new CliError("This repository is already initialized. Use vogoban configure with these flags to change its settings; nothing was overwritten.");
+    if (command === "configure" && !interactiveTerminal(opts) && !hasOverrides) throw new CliError("Noninteractive configure requires explicit setting flags, such as --analyzers frontend. Use vogoban init to inspect an existing workspace.");
+    let config = applyWorkspaceOverrides(existing ?? defaultWorkspaceConfig(detected.root, detected), overrides);
+    if (interactiveTerminal(opts) && !hasOverrides && (command === "configure" || !existing)) {
+      const selected = await workspaceWizard(config, detected, command === "configure");
+      if (!selected) { console.log("Cancelled. No workspace settings or graph data were changed."); return; }
+      config = selected;
+    }
+    const result = command === "configure" ? configureWorkspace(detected.root, config, existing!) : initializeWorkspace(detected.root, config);
+    const created = "created" in result && result.created;
+    const changed = "changed" in result && result.changed;
+    const payload = { initialized: created, reconfigured: changed, repository: { name: detected.name, root: detected.root, git: detected.git }, detection: detected, workspace: { path: workspacePath(detected.root), config: workspaceConfigPath(detected.root), graph: `${workspacePath(detected.root)}/graph.db` }, config: result.config };
+    output(() => [
+      terminalStyle.bold.green(created ? "✓ Repository initialized" : changed ? "✓ Configuration updated" : "Existing Vogoban configuration preserved."),
+      `  Repository: ${detected.name}`, `  Workspace: ${workspacePath(detected.root)}/`, "",
+      workspaceSummary(result.config), "", terminalStyle.dim("Graph, cache, and existing snapshots were preserved."),
+      "", "Next:", "  vogoban analyze .", "  vogoban graph", "  vogoban configure .",
+    ].join("\n"), payload);
+    return;
+  }
+  const analysisOverrides = ["analyze", "sync", "sync-status"].includes(command ?? "") ? workspaceOverrides(opts).analysis : {};
   const isAnalyze = command === "analyze";
   const log = createLogger({ level: opts["log-level"] ?? (isAnalyze ? "info" : "warn"), json: opts["log-json"], base: process.env.VOGOBAN_CORRELATION_ID ? { correlation_id: process.env.VOGOBAN_CORRELATION_ID, job: process.env.VOGOBAN_JOB_ID } : {} });
-  const store = new SqliteGraphStore(opts.db ?? process.env.VOGOBAN_DB ?? ".vogoban/graph.db");
+  let localTarget: string | null = null;
+  if (["analyze", "graph", "sync", "sync-status", "sync-changes", "sync-history"].includes(command ?? "")) {
+    try {
+      localTarget = repositoryRoot(args[0] ?? ".");
+    } catch (error) {
+      if (command === "analyze") throw new AnalysisError("repository", `repository identity cannot be determined: ${error instanceof Error ? error.message : String(error)}`);
+      if (command === "sync") localTarget = realpathSync(args[0] ?? ".");
+      else throw new CliError(`repository root cannot be determined: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (localTarget) loadWorkspaceConfig(localTarget);
+  const dbPath = opts.db ?? process.env.VOGOBAN_DB ?? (localTarget ? join(localTarget, ".vogoban/graph.db") : ".vogoban/graph.db");
+  const store = new SqliteGraphStore(dbPath);
   const query = new GraphQuery(store);
   const appQuery = new ApplicationQuery(store);
   const contractQuery = new ContractQuery(store);
@@ -771,6 +836,17 @@ async function main() {
   };
   try {
     switch (command) {
+      case "graph": {
+        const root = localTarget!;
+        const repository = store.listCatalog().find((entry) => entry.localPath === root) ?? null;
+        const payload = { repository: repository ? { id: repository.repositoryId, name: repository.name, root, status: repository.status } : null, workspace: workspacePath(root), graph: repository ? { database: dbPath, stats: store.stats(repository.repositoryId), latestRun: store.listRuns(repository.repositoryId)[0] ?? null } : null };
+        if (opts.json) { output(() => JSON.stringify(payload, null, 2), payload); break; }
+        if (!repository) { console.log(`No local graph yet for ${root}.\n\nRun:\n  vogoban analyze ${root}`); break; }
+        const local = serveLocalGraph({ root, db: dbPath });
+        console.log(`\nVogoban local architecture graph\n  Repository: ${repository.name}\n  URL: ${local.url}\n  Bound to loopback only; no repository data is transmitted.\n\nPress Ctrl+C to stop.\n`);
+        await new Promise<void>(() => {});
+        break;
+      }
       case "ask":
       case "ai":
       case "ai-query":
@@ -917,25 +993,45 @@ async function main() {
       }
       case "analyze": {
         const path = args[0] ?? ".";
-        const { run, repositoryId } = await analyzeRepository(path, store, defaultPlugins(), { semantic: !opts["no-semantic"] }, log);
+        const { run, repositoryId } = await analyzeRepository(path, store, defaultPlugins(), analysisOverrides, log);
         const stats = store.stats(repositoryId);
+        const repository = store.getRepository(repositoryId);
+        const applicationGraph = Object.fromEntries(appQuery.statistics(repositoryId).map(([k, v]) => [k.trim(), v]));
+        const contractGraph = Object.fromEntries(contractQuery.statistics(repositoryId).map(([k, v]) => [k.trim(), v]));
+        const infrastructureGraph = Object.fromEntries(infraQuery.statistics(repositoryId).map(([k, v]) => [k.trim(), v]));
         const failedPlugins = [...new Set(store.findDiagnostics({ repositoryId, limit: 100000 }).filter((d) => d.code === "plugin-failed").map((d) => d.plugin))];
         if (failedPlugins.length) console.error(`WARNING: graph is degraded; plugin(s) failed: ${failedPlugins.join(", ")} (see 'diagnostics')`);
         output(
           () => [
-            `Analyzed ${store.getRepository(repositoryId)?.name} @ ${run.commit?.slice(0, 12) ?? "(no commit)"} in ${run.stats.durationMs} ms`,
-            table(summary(stats).map(([k, v]) => [k, v]), ["", "count"]),
-            `evidence: ${Object.entries(stats.relationshipsByEvidence).map(([k, n]) => `${k}=${n}`).join(" ")}`,
-            `unresolved: ${Object.entries(stats.unresolvedByCategory).map(([k, n]) => `${k}=${n}`).join(" ") || "none"}`,
+            terminalStyle.bold.green("✓ Analysis complete"),
             "",
-            table(appQuery.statistics(repositoryId).map(([k, v]) => [k, v]), ["application graph", "count"]),
+            `Repository\n  ${repository?.name ?? repositoryId}\n  ${repository?.rootPath ?? path}`,
             "",
-            table(contractQuery.statistics(repositoryId).map(([k, v]) => [k, v]), ["contract graph", "count"]),
+            `Graph\n  ${run.stats.entities} entities\n  ${run.stats.relationships} relationships\n  ${run.stats.diagnostics} diagnostics\n  ${run.stats.unresolved} unresolved references\n  ${run.stats.durationMs} ms`,
             "",
-            table(infraQuery.statistics(repositoryId).map(([k, v]) => [k, v]), ["infrastructure graph (declared)", "count"]),
+            `Evidence\n  ${Object.entries(stats.relationshipsByEvidence).map(([k, n]) => `${k} ${n}`).join("  · ") || "No relationships recorded"}`,
+            "",
+            `Architecture\n  ${Object.entries(applicationGraph).map(([k, v]) => `${k} ${v}`).join("  · ") || "No application entities"}`,
+            `  ${Object.entries(contractGraph).map(([k, v]) => `${k} ${v}`).join("  · ") || "No contract entities"}`,
+            `  ${Object.entries(infrastructureGraph).map(([k, v]) => `${k} ${v}`).join("  · ") || "No declared infrastructure entities"}`,
+            "",
+            "Next\n  vogoban graph\n  vogoban diagnostics\n  vogoban impact <entity>",
           ].join("\n"),
-          { run, summary: Object.fromEntries(summary(stats).map(([k, v]) => [k.trim(), v])), applicationGraph: Object.fromEntries(appQuery.statistics(repositoryId).map(([k, v]) => [k.trim(), v])), infrastructureGraph: Object.fromEntries(infraQuery.statistics(repositoryId).map(([k, v]) => [k.trim(), v])), stats },
+          { repository: repository ? { id: repository.id, name: repository.name, root: repository.rootPath } : { id: repositoryId, name: repositoryId, root: path }, run, graph: { database: dbPath, summary: Object.fromEntries(summary(stats).map(([k, v]) => [k.trim(), v])), stats }, applicationGraph, contractGraph, infrastructureGraph },
         );
+        if (!failedPlugins.length && !opts["no-open"] && interactiveTerminal(opts)) {
+          const open = opts.open || loadWorkspaceConfig(localTarget!)?.ui.openAfterAnalysis || await offerGraph(false);
+          if (open) {
+            const local = serveLocalGraph({ root: localTarget!, db: dbPath });
+            console.log(`\nLocal graph: ${local.url}\nBound to loopback only. Press Ctrl+C to stop.\n`);
+            try {
+              const launcher = process.platform === "darwin" ? ["open", local.url] : process.platform === "win32" ? ["cmd", "/c", "start", "", local.url] : ["xdg-open", local.url];
+              const browser = Bun.spawn(launcher, { stdout: "ignore", stderr: "ignore" });
+              void browser.exited.then((code) => { if (code !== 0) console.error("Browser launch was unavailable; open the local URL above manually."); });
+            } catch { console.error("Browser launch was unavailable; open the local URL above manually."); }
+            await new Promise<void>(() => {});
+          }
+        }
         break;
       }
       case "repos": {
@@ -2352,7 +2448,7 @@ async function main() {
           fromCommit: opts.from ?? opts.base ?? null,
           toCommit: opts.to ?? opts.head ?? null,
           forceFull: opts.full,
-          semantic: !opts["no-semantic"],
+          ...analysisOverrides,
           lockDir: join(dbDir, "locks"),
         }, log);
         let metaError: string | null = null;
@@ -2376,7 +2472,7 @@ async function main() {
       }
       case "sync-status": {
         const path = args[0] ?? ".";
-        const s = syncStatus(path, store, defaultPlugins());
+        const s = syncStatus(path, store, defaultPlugins(), analysisOverrides);
         output(() => [
           `${s.repository}: ${s.state}`,
           `  analyzed commit  ${s.analyzedCommit?.slice(0, 12) ?? "(never)"}`,
@@ -2442,13 +2538,19 @@ async function main() {
 }
 
 main().catch((error) => {
-  if (error instanceof CliError || error instanceof AnalysisError || error instanceof SyncUsageError) {
+  if (error instanceof Error && ["ExitPromptError", "AbortPromptError"].includes(error.name)) {
+    console.error("\nCancelled.");
+    process.exit(130);
+  }
+  if (error instanceof CliError || error instanceof AnalysisError || error instanceof SyncUsageError || error instanceof WorkspaceConfigError) {
     if (opts.json) console.log(JSON.stringify({ error: error.message.split("\n")[0], category: error instanceof AnalysisError ? error.category : "cli", details: error instanceof CliError ? (error.payload ?? null) : null }, null, 2));
     else console.error(error.message);
     process.exit(2);
   }
   if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
-    console.error(`path not found: ${(error as NodeJS.ErrnoException).path ?? "(unknown)"}`);
+    const message = `path not found: ${(error as NodeJS.ErrnoException).path ?? "(unknown)"}`;
+    if (opts.json) console.log(JSON.stringify({ error: message, category: "cli", details: null }, null, 2));
+    else console.error(message);
     process.exit(2);
   }
   const message = error instanceof Error ? error.message : String(error);

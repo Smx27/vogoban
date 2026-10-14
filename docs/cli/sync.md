@@ -4,7 +4,9 @@
 
 Sync always analyzes the **checked-out tree**. The change source (working tree, a commit, a commit range, staged changes) only decides what is re-analyzed. An incremental result is equivalent to a clean full rebuild of the same commit; when incremental reuse would be unsafe, sync runs a full rebuild and says why. How the planner and caches work is described in [Incremental analysis](../features/incremental-analysis.md) and [Incremental engine](../architecture/incremental-engine.md).
 
-All four commands take an optional repository path (default `.`), use the store from `--db`, `$VOGOBAN_DB` or `./.vogoban/graph.db` relative to the current directory, and accept `--json`. The repository must already be in the store (run `vogoban analyze .` once); otherwise sync performs a full analysis.
+All four commands take an optional repository path (default `.`), use the store from `--db`, `$VOGOBAN_DB` or `<repository>/.vogoban/graph.db`, and accept `--json`. The repository must already be in the store (run `vogoban analyze .` once); otherwise sync performs a full analysis.
+
+Repository-local analyzer groups, exclusions, semantic mode, snapshot capture and incremental preferences come from `.vogoban/config.json`. Explicit analysis flags override them for one run. Turning off incremental sync forces a full rebuild; changing consumed settings invalidates a previously current graph. With snapshot capture disabled, sync still updates the graph and records history, but there is no before/after snapshot diff. Unmeasured reconciliation counts are `null` in JSON and reported as unavailable in human output, not invented zeros. See [configure.md](configure.md).
 
 ## Before you start: keep the store out of the change set
 
@@ -32,20 +34,20 @@ vogoban graph sync [path] [--since <commit>] [--from <a> --to <b>] [--base <a> -
                    [--no-semantic] [--untrusted] [--trust-repository]
 ```
 
-| Option | Meaning |
-| --- | --- |
-| *(none)* | Working-tree mode: changes between the last analyzed commit and the checkout, including uncommitted edits. |
-| `--since <commit>` | Changes since that commit. |
-| `--from <a> --to <b>` | A commit range. `--base`/`--head` are the same, for CI. `--to`/`--head` must resolve to the checked-out commit. |
-| `--staged` | Only staged changes. |
-| `--full` | Force a full rebuild (plan code `full_requested`; not counted as a fallback). |
-| `--meta` | After a successful sync, rebuild the MetaGraph in the same store. |
-| `--quiet` | Print nothing (used by hooks). `--json` still prints. |
-| `--json` | Print the structured result. |
-| `--strict-incremental` | Exit 5 when an incremental request on an existing graph ran as a full rebuild. |
-| `--no-semantic` | Syntax-only analysis (no Roslyn). Changing it between runs forces a full rebuild. |
-| `--untrusted` | Disable MSBuild evaluation of repository build files. |
-| `--trust-repository` | With `--base`/`--head`, keep build evaluation on. Without it, CI-mode sync is untrusted. |
+| Option                 | Meaning                                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| _(none)_               | Working-tree mode: changes between the last analyzed commit and the checkout, including uncommitted edits.      |
+| `--since <commit>`     | Changes since that commit.                                                                                      |
+| `--from <a> --to <b>`  | A commit range. `--base`/`--head` are the same, for CI. `--to`/`--head` must resolve to the checked-out commit. |
+| `--staged`             | Only staged changes.                                                                                            |
+| `--full`               | Force a full rebuild (plan code `full_requested`; not counted as a fallback).                                   |
+| `--meta`               | After a successful sync, rebuild the MetaGraph in the same store.                                               |
+| `--quiet`              | Print nothing (used by hooks). `--json` still prints.                                                           |
+| `--json`               | Print the structured result.                                                                                    |
+| `--strict-incremental` | Exit 5 when an incremental request on an existing graph ran as a full rebuild.                                  |
+| `--no-semantic`        | Syntax-only analysis (no Roslyn). Changing it between runs forces a full rebuild.                               |
+| `--untrusted`          | Disable MSBuild evaluation of repository build files.                                                           |
+| `--trust-repository`   | With `--base`/`--head`, keep build evaluation on. Without it, CI-mode sync is untrusted.                        |
 
 Precedence when several are given: a commit range (`--from/--to/--base/--head`) wins over `--staged`, which wins over `--since`.
 
@@ -70,16 +72,16 @@ contoso-orders: INCREMENTAL — 1 file change(s): +0 ~1 -0 renamed 0
   diff: vogoban diff --from gs_cde2ce457ff69559062d15ba --to gs_217c92a3ca9107dc26178aa8
 ```
 
-| Line | Meaning |
-| --- | --- |
-| first line | Repository, run kind (`NO-OP`, `INCREMENTAL`, `FULL`, `FULL (FALLBACK)`) and reason. |
-| `commit` | Previous analyzed commit → current commit, and the change source (`working-tree`, `since`, `staged`, `commit-range`). |
-| `graph version` | Previous → new graph version hash. |
-| `changed files · analyzed · affected projects` | Files in the change set, files re-analyzed (changed files plus the import/project closure), projects recompiled. |
-| `reconciled` | Entities and relationships created (`+`), updated (`~`) and deleted (`-`). |
-| `duration` | This run, and the last full-analysis duration for comparison. |
-| `domains` | Planner domains re-derived (code, api, messaging, azure, frontend, infrastructure, metagraph, ...). |
-| `diff` | The command that shows what changed architecturally. |
+| Line                                           | Meaning                                                                                                               |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| first line                                     | Repository, run kind (`NO-OP`, `INCREMENTAL`, `FULL`, `FULL (FALLBACK)`) and reason.                                  |
+| `commit`                                       | Previous analyzed commit → current commit, and the change source (`working-tree`, `since`, `staged`, `commit-range`). |
+| `graph version`                                | Previous → new graph version hash.                                                                                    |
+| `changed files · analyzed · affected projects` | Files in the change set, files re-analyzed (changed files plus the import/project closure), projects recompiled.      |
+| `reconciled`                                   | Entities and relationships created (`+`), updated (`~`) and deleted (`-`).                                            |
+| `duration`                                     | This run, and the last full-analysis duration for comparison.                                                         |
+| `domains`                                      | Planner domains re-derived (code, api, messaging, azure, frontend, infrastructure, metagraph, ...).                   |
+| `diff`                                         | The command that shows what changed architecturally.                                                                  |
 
 Running it again on the same commit is a no-op:
 
@@ -140,24 +142,24 @@ contoso-fulfillment: INCREMENTAL — 1 file change(s): +0 ~1 -0 renamed 0
 
 `--json` prints one object with these fields:
 
-| Field | Meaning |
-| --- | --- |
-| `repository`, `repositoryId` | Repository name and id. |
-| `requestedMode` | `incremental` or `full` (what you asked for). |
-| `actualMode` / `mode` | `noop`, `incremental` or `full` (what ran). |
-| `status` | `SUCCESS`, `NO_OP` or `FAILED`. |
-| `reason` | Human-readable reason. |
-| `fallbackCode`, `fallbackReason` | Null unless a requested incremental sync ran as a full rebuild. |
-| `previousCommit`, `currentCommit` | Full commit hashes. |
-| `previousGraphVersion`, `graphVersion` | Graph version hashes. |
-| `changeSource` | `working-tree`, `since`, `staged` or `commit-range`. |
-| `plan` | Invalidation plan: affected files, projects and domains. |
-| `metrics` | `changedFiles`, `filesAnalyzed`, `affectedProjects`, `entitiesCreated/Updated/Deleted`, `relationshipsCreated/Updated/Deleted`, `durationMs`, `baselineDurationMs`. |
-| `diffSnapshotFrom`, `diffSnapshotTo` | Snapshot ids for `vogoban diff`. Null on a no-op. |
-| `degradedPlugins` | Plugins that crashed (exit 4). |
-| `error` | Failure message when `status` is `FAILED`. |
-| `timestamp` | When the run finished. |
-| `metaGraph` | Only with `--meta`: `{"status":"OK"}` or `{"status":"FAILED","error":…}`. |
+| Field                                  | Meaning                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repository`, `repositoryId`           | Repository name and id.                                                                                                                                             |
+| `requestedMode`                        | `incremental` or `full` (what you asked for).                                                                                                                       |
+| `actualMode` / `mode`                  | `noop`, `incremental` or `full` (what ran).                                                                                                                         |
+| `status`                               | `SUCCESS`, `NO_OP` or `FAILED`.                                                                                                                                     |
+| `reason`                               | Human-readable reason.                                                                                                                                              |
+| `fallbackCode`, `fallbackReason`       | Null unless a requested incremental sync ran as a full rebuild.                                                                                                     |
+| `previousCommit`, `currentCommit`      | Full commit hashes.                                                                                                                                                 |
+| `previousGraphVersion`, `graphVersion` | Graph version hashes.                                                                                                                                               |
+| `changeSource`                         | `working-tree`, `since`, `staged` or `commit-range`.                                                                                                                |
+| `plan`                                 | Invalidation plan: affected files, projects and domains.                                                                                                            |
+| `metrics`                              | `changedFiles`, `filesAnalyzed`, `affectedProjects`, `entitiesCreated/Updated/Deleted`, `relationshipsCreated/Updated/Deleted`, `durationMs`, `baselineDurationMs`. |
+| `diffSnapshotFrom`, `diffSnapshotTo`   | Snapshot ids for `vogoban diff`. Null on a no-op.                                                                                                                   |
+| `degradedPlugins`                      | Plugins that crashed (exit 4).                                                                                                                                      |
+| `error`                                | Failure message when `status` is `FAILED`.                                                                                                                          |
+| `timestamp`                            | When the run finished.                                                                                                                                              |
+| `metaGraph`                            | Only with `--meta`: `{"status":"OK"}` or `{"status":"FAILED","error":…}`.                                                                                           |
 
 ```bash
 vogoban graph sync --base ccaffed --head HEAD --json
@@ -194,31 +196,31 @@ With `--json`, the CI-mode `note:` on stderr is not printed.
 
 `fallbackCode` is one of:
 
-| Code | Cause |
-| --- | --- |
-| `missing_base_commit` | The base commit cannot be resolved (deleted branch, shallow clone). |
-| `not_a_git_repository` | No reliable change source. |
-| `no_existing_graph` | The store has no graph for this repository. |
-| `no_prior_run` | No previous run to compare with. |
-| `semantic_mode_changed` | `--no-semantic` was toggled. |
-| `evaluation_mode_changed` | Build evaluation (trust mode) differs from the previous run. |
-| `schema_version_changed` | Graph schema version changed. |
-| `analyzer_version_changed` | Analyzer version changed. |
-| `plugin_versions_changed` | A plugin version changed. |
-| `configuration_changed` | `vogoban.json` or the configuration fingerprint changed. |
+| Code                       | Cause                                                               |
+| -------------------------- | ------------------------------------------------------------------- |
+| `missing_base_commit`      | The base commit cannot be resolved (deleted branch, shallow clone). |
+| `not_a_git_repository`     | No reliable change source.                                          |
+| `no_existing_graph`        | The store has no graph for this repository.                         |
+| `no_prior_run`             | No previous run to compare with.                                    |
+| `semantic_mode_changed`    | `--no-semantic` was toggled.                                        |
+| `evaluation_mode_changed`  | Build evaluation (trust mode) differs from the previous run.        |
+| `schema_version_changed`   | Graph schema version changed.                                       |
+| `analyzer_version_changed` | Analyzer version changed.                                           |
+| `plugin_versions_changed`  | A plugin version changed.                                           |
+| `configuration_changed`    | `vogoban.json` or the configuration fingerprint changed.            |
 
 `full_requested` is the plan code for `--full`; it is not a fallback and never triggers exit 5.
 
 ### Exit codes
 
-| Exit | Meaning |
-| --- | --- |
-| 0 | Success, no-op, or safe full-rebuild fallback (see `actualMode`, `fallbackCode`). |
-| 1 | Unexpected environment error, for example the store is not writable. The previous graph is preserved. With `--json`, `{"error", "category": "internal"}` is printed. |
-| 2 | Invalid request: malformed or unresolvable `--head`/`--to`, commit range outside a Git repository, head not checked out, unreadable path. |
-| 3 | Sync failed; the previous graph is preserved and the failure is recorded in history. Also returned when `--meta` fails after a successful repository sync (the previous MetaGraph snapshot is kept). |
-| 4 | Succeeded, but the graph is degraded because a plugin crashed (`degradedPlugins`). |
-| 5 | `--strict-incremental` and the incremental request ran as a full rebuild. |
+| Exit | Meaning                                                                                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Success, no-op, or safe full-rebuild fallback (see `actualMode`, `fallbackCode`).                                                                                                                    |
+| 1    | Unexpected environment error, for example the store is not writable. The previous graph is preserved. With `--json`, `{"error", "category": "internal"}` is printed.                                 |
+| 2    | Invalid request: malformed or unresolvable `--head`/`--to`, commit range outside a Git repository, head not checked out, unreadable path.                                                            |
+| 3    | Sync failed; the previous graph is preserved and the failure is recorded in history. Also returned when `--meta` fails after a successful repository sync (the previous MetaGraph snapshot is kept). |
+| 4    | Succeeded, but the graph is degraded because a plugin crashed (`degradedPlugins`).                                                                                                                   |
+| 5    | `--strict-incremental` and the incremental request ran as a full rebuild.                                                                                                                            |
 
 ```bash
 vogoban graph sync --from ccaffed --to nosuchref

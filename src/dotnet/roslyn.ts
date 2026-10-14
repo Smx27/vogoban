@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { hashOf } from "../graph/identity.ts";
 import { isSecretName, redactSecretText } from "../infrastructure/common.ts";
-import { maxSourceFileBytes } from "../pipeline/discovery.ts";
+import { fileExclusionMatcher, maxSourceFileBytes } from "../pipeline/discovery.ts";
 import type { AnalysisContext, AnalysisPlugin } from "../plugins/types.ts";
 import { DOTNET_PROJECTS, DOTNET_SEMANTIC, type DotnetProject } from "./artifacts.ts";
 import type { SemanticProjectFacts } from "./semantic-facts.ts";
@@ -55,6 +55,7 @@ export const roslynBackend: SemanticBackend = {
     const request = {
       repositoryRoot: ctx.repository.rootPath,
       maxSourceFileBytes: maxSourceFileBytes(),
+      excludedSourcePatterns: fileExclusionMatcher(ctx.options.exclusions ?? []).patterns,
       projects: projects.map((p) => ({
         id: p.entityId,
         name: p.name,
@@ -123,6 +124,7 @@ function projectCacheKeys(ctx: AnalysisContext, projects: DotnetProject[], backe
       backendVersion,
       `msbuild-evaluation=${process.env.VOGOBAN_MSBUILD_EVALUATION === "0" ? "off" : "on"}`,
       `max-source-file-bytes=${maxSourceFileBytes()}`,
+      JSON.stringify(ctx.options.exclusions ?? []),
       JSON.stringify({ ...p, sourceFiles: undefined }),
       JSON.stringify(aspireProjectMetadata(p, projects) ?? null),
       ...p.sourceFiles.map((f) => `${f}:${fileHash.get(f)}`),

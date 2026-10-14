@@ -99,21 +99,22 @@ export function discoverRepository(path: string, configured: { id: string | null
   };
 }
 
-function listFiles(root: string): string[] {
+function listFiles(root: string, excluded: (path: string, directory?: boolean) => boolean): string[] {
   const tracked = git(root, ["ls-files", "-co", "--exclude-standard", "-z"]);
   if (tracked !== null) {
     return tracked
       .split("\0")
       .filter(Boolean)
-      .filter((p) => !p.split("/").some((part) => IGNORED_DIRS.has(part)));
+      .filter((p) => !p.split("/").some((part) => IGNORED_DIRS.has(part)) && !excluded(p));
   }
   const out: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        if (!IGNORED_DIRS.has(entry.name)) walk(join(dir, entry.name));
+        if (!IGNORED_DIRS.has(entry.name) && !excluded(relative(root, join(dir, entry.name)).split(sep).join("/"), true)) walk(join(dir, entry.name));
       } else if (entry.isFile()) {
-        out.push(relative(root, join(dir, entry.name)).split(sep).join("/"));
+        const path = relative(root, join(dir, entry.name)).split(sep).join("/");
+        if (!excluded(path)) out.push(path);
       }
     }
   };
@@ -176,6 +177,16 @@ const KUBERNETES_MARKER = /^apiVersion:\s*\S+[\s\S]*?^kind:\s*\w+|^kind:\s*\w+[\
 const ARM_MARKER = /"\$schema"\s*:\s*"https?:\/\/schema\.management\.azure\.com\/schemas\/[^"]*(deploymentTemplate|deploymentParameters)\.json/i;
 const PIPELINE_MARKER = /^(stages|jobs|steps|extends):/m;
 
+export function fileExclusionMatcher(exclusions: readonly string[]) {
+  const patterns = exclusions.flatMap((pattern) => {
+    const normalized = pattern.replace(/^\.\//, "").replace(/\/$/, "");
+    const glob = globToRegExp(normalized).source.slice(1, -1);
+    return !/[/*?\[\]{}]/.test(normalized) ? [`(?:^|/)${glob}/`, `^${glob}(?:/|$)`] : [`^${glob}(?:/|$)`];
+  });
+  const expressions = patterns.map((pattern) => new RegExp(pattern, "i"));
+  return Object.assign((path: string, directory = false) => expressions.some((expression) => expression.test(directory ? `${path}/` : path)), { patterns });
+}
+
 export async function discoverFiles(
   root: string,
   log: Logger,
@@ -183,10 +194,12 @@ export async function discoverFiles(
   explicitPipelines: string[] = [],
   explicitInfrastructure: string[] = [],
   frontend: { include: string[]; exclude: string[] } = { include: [], exclude: [] },
+  exclusions: string[] = [],
 ): Promise<{ files: DiscoveredFile[]; skipped: { path: string; reason: string }[] }> {
   const files: DiscoveredFile[] = [];
   const skipped: { path: string; reason: string }[] = [];
-  const all = listFiles(root).sort();
+  const excluded = fileExclusionMatcher(exclusions);
+  const all = listFiles(root, excluded).sort();
   const gitlinks = (git(root, ["ls-files", "--stage", "-z"]) ?? "").split("\0").filter((e) => e.startsWith("160000 ")).map((e) => e.slice(e.indexOf("\t") + 1));
   for (const path of gitlinks) skipped.push({ path, reason: "git submodule not analyzed: its contents are external to this repository's graph (register it as its own repository)" });
   const chartDirs = all.filter((p) => /(^|\/)Chart\.yaml$/.test(p)).map((p) => p.slice(0, -"Chart.yaml".length));

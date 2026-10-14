@@ -66,7 +66,10 @@ export interface AnalysisContext {
 }
 
 export interface AnalysisOptions {
-  semantic: boolean;
+  semantic?: boolean;
+  analyzers?: string[];
+  exclusions?: string[];
+  snapshots?: boolean;
 }
 
 export interface AnalysisPlugin {

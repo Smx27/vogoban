@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Vogoban.Roslyn;
@@ -17,6 +18,7 @@ var request = JsonSerializer.Deserialize<AnalysisRequest>(Console.In.ReadToEnd()
     ?? throw new InvalidOperationException("empty analysis request");
 var root = RepositoryFiles.NormalizeRoot(request.RepositoryRoot);
 var maxSourceBytes = request.MaxSourceFileBytes is > 0 and var configured ? configured : RepositoryFiles.DefaultMaxSourceFileBytes;
+var excludedSources = (request.ExcludedSourcePatterns ?? new()).Select(pattern => new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)).ToList();
 var stdout = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = false };
 
 var byId = request.Projects.ToDictionary(p => p.Id);
@@ -58,6 +60,7 @@ foreach (var project in order)
         bool Admit(string full)
         {
             if (admitted.TryGetValue(full, out var ok)) return ok;
+            if (excludedSources.Any(pattern => pattern.IsMatch(Rel(full)))) return admitted[full] = false;
             var rejection = RepositoryFiles.Validate(root, full, maxSourceBytes);
             if (rejection != null && !merged.SkippedSources.Any(s => s.File == Rel(full)))
             {

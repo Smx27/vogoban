@@ -16,10 +16,28 @@ import { createHash } from "node:crypto";
 import { captureRepositorySnapshot } from "../analysis/diff.ts";
 import type { CatalogEntry } from "../graph/model.ts";
 import { loadConfig, type VogobanConfig } from "./config.ts";
-import { discoverFiles, discoverRepository, repositoryRoot, type DiscoveredRepository } from "./discovery.ts";
+import { discoverFiles, discoverRepository, fileExclusionMatcher, repositoryRoot, type DiscoveredRepository } from "./discovery.ts";
+import { loadWorkspaceConfig } from "../local/workspace.ts";
+import { selectAnalyzerPlugins } from "../plugins/registry.ts";
 
 export const ANALYZER_VERSION = "0.1.0";
 const CORE = "vogoban.core";
+
+export function repositoryAnalysisSettings(root: string, overrides: AnalysisOptions & { incremental?: boolean }) {
+  const workspace = loadWorkspaceConfig(root)?.analysis;
+  const explicit = Object.fromEntries(["semantic", "analyzers", "exclusions", "snapshots", "incremental"].filter((key) => overrides[key as keyof typeof overrides] !== undefined).map((key) => [key, overrides[key as keyof typeof overrides]]));
+  const hasOverrides = overrides.analyzers !== undefined || overrides.exclusions !== undefined || overrides.snapshots !== undefined || overrides.incremental !== undefined;
+  return {
+    options: {
+      semantic: overrides.semantic ?? workspace?.semantic ?? true,
+      analyzers: overrides.analyzers ?? workspace?.analyzers,
+      exclusions: overrides.exclusions ?? workspace?.exclusions,
+      snapshots: overrides.snapshots ?? workspace?.snapshots ?? true,
+      incremental: overrides.incremental ?? workspace?.incremental ?? true,
+    },
+    fingerprint: workspace || hasOverrides ? createHash("sha256").update(JSON.stringify({ workspace: workspace ?? null, overrides: explicit })).digest("hex").slice(0, 16) : undefined,
+  };
+}
 
 export class AnalysisError extends Error {
   constructor(readonly category: "repository" | "storage", message: string) {
@@ -47,8 +65,13 @@ export async function analyzeRepository(
   const started = performance.now();
   let repo: DiscoveredRepository;
   let config: VogobanConfig;
+  let settings: ReturnType<typeof repositoryAnalysisSettings>;
   try {
-    config = loadConfig(repositoryRoot(path));
+    const root = repositoryRoot(path);
+    config = loadConfig(root);
+    settings = repositoryAnalysisSettings(root, options);
+    options = settings.options;
+    plugins = selectAnalyzerPlugins(plugins, options.analyzers);
     repo = discoverRepository(path, config.repository);
   } catch (error) {
     throw new AnalysisError("repository", `repository cannot be accessed: ${path} (${error instanceof Error ? error.message : String(error)})`);
@@ -65,7 +88,7 @@ export async function analyzeRepository(
     repositoryId: repo.id, identity: repo.identity, name: repo.name, url: repo.remoteUrl, provider: repo.provider, organization: repo.organization,
     defaultBranch: repo.defaultBranch, localPath: repo.rootPath, status: "ANALYZING", registeredAt: previous?.registeredAt ?? startedAt,
     analyzedCommit: previous?.analyzedCommit ?? null, analyzedDirty: previous?.analyzedDirty ?? false, analyzedRun: previous?.analyzedRun ?? null, analyzedAt: previous?.analyzedAt ?? null,
-    graphVersion: previous?.graphVersion ?? null, analyzerVersion: previous?.analyzerVersion ?? null, semantic: options.semantic, lastError: null,
+    graphVersion: previous?.graphVersion ?? null, analyzerVersion: previous?.analyzerVersion ?? null, semantic: settings.options.semantic, lastError: null,
   };
   store.upsertCatalog(catalog);
   try {
@@ -73,9 +96,11 @@ export async function analyzeRepository(
     const result = await analyzeDiscovered(repo, config, store, plugins, options, log, startedAt, started, (run, graphVersion) => {
       store.upsertCatalog({ ...catalog, status: "READY", analyzedCommit: repo.commit, analyzedDirty: repo.dirty, analyzedRun: run.id, analyzedAt: run.finishedAt, graphVersion, analyzerVersion: ANALYZER_VERSION });
       store.saveBaseline(`evaluation:${repo.id}`, process.env.VOGOBAN_MSBUILD_EVALUATION === "0" ? "off" : "on");
-      snapshot = captureRepositorySnapshot(store, repo.id, repo.commit, graphVersion);
+      store.saveBaseline(`analysis-settings:${repo.id}`, settings.fingerprint ?? null);
+      if (options.snapshots !== false) snapshot = captureRepositorySnapshot(store, repo.id, repo.commit, graphVersion);
     });
-    log.info("graph.snapshot", { id: snapshot!.id, entities: snapshot!.entities, relationships: snapshot!.relationships });
+    const captured = snapshot as ReturnType<typeof captureRepositorySnapshot> | null;
+    if (captured) log.info("graph.snapshot", { id: captured.id, entities: captured.entities, relationships: captured.relationships });
     return result;
   } catch (error) {
     store.upsertCatalog({ ...catalog, status: "FAILED", lastError: error instanceof Error ? error.message : String(error) });
@@ -94,7 +119,7 @@ async function analyzeDiscovered(
   started: number,
   publish: (run: AnalysisRun, graphVersion: string) => void,
 ): Promise<AnalyzeResult & { graphVersion: string }> {
-  const { files, skipped } = await discoverFiles(repo.rootPath, log, config.openapi, config.infrastructure.pipelines, config.infrastructure.helmValues, config.frontend);
+  const { files, skipped } = await discoverFiles(repo.rootPath, log, config.openapi, config.infrastructure.pipelines, config.infrastructure.helmValues, config.frontend, options.exclusions);
   const graph = new GraphBuilder();
   const provenance = (input: { plugin: string; extractor: string; mechanism: string; resolver?: string | null; location?: Provenance["location"]; version: string }): Provenance => ({
     repositoryId: repo.id,
@@ -149,6 +174,7 @@ async function analyzeDiscovered(
     graph.diagnostic({ repositoryId: repo.id, category: "discovery", plugin: CORE, file: s.path, severity: "warning", recoverable: true, code: "file-skipped", message: s.reason });
   }
 
+  const excluded = fileExclusionMatcher(options.exclusions ?? []);
   const ctx: AnalysisContext = {
     repository: repo,
     repositoryEntityId,
@@ -161,7 +187,7 @@ async function analyzeDiscovered(
     options,
     config,
     provenance,
-    readText: (p) => Bun.file(`${repo.rootPath}/${p}`).text(),
+    readText: (p) => excluded(p) ? Promise.reject(new Error(`file excluded by analysis settings: ${p}`)) : Bun.file(`${repo.rootPath}/${p}`).text(),
     fileEntityId: (p) => fileIds.get(p),
   };
 
