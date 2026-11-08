@@ -11,6 +11,9 @@ test("local graph serves responses with defensive security headers", async () =>
     db: join(root, ".vogoban", "graph.db"),
   });
   try {
+    expect(LOCAL_SECURITY_HEADERS["content-security-policy"]).toContain("script-src 'self'");
+    expect(LOCAL_SECURITY_HEADERS["content-security-policy"]).not.toContain("script-src 'self' 'unsafe-inline'");
+    expect(LOCAL_SECURITY_HEADERS["content-security-policy"]).toContain("style-src 'self' 'unsafe-inline'");
     for (const path of ["/", "/app.js", "/api/status", "/nonexistent"]) {
       const response = await fetch(`${server.url}${path}`);
       for (const [header, expectedValue] of Object.entries(LOCAL_SECURITY_HEADERS)) {
