@@ -37,6 +37,20 @@ async function clientBundle() {
   return browserBundle!;
 }
 
+/**
+ * Security headers for the local graph web server (defense-in-depth):
+ * - x-content-type-options: prevents MIME type sniffing vulnerabilities.
+ * - x-frame-options: prevents clickjacking by forbidding embedding in frames.
+ * - referrer-policy: prevents leaking local query/path information to third parties.
+ * - content-security-policy: restricts script, style, and connect origins to self.
+ */
+export const LOCAL_SECURITY_HEADERS: Record<string, string> = {
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+};
+
 export function serveLocalGraph(options: {
   root: string;
   db: string;
@@ -60,100 +74,107 @@ export function serveLocalGraph(options: {
     hostname: "127.0.0.1",
     port: options.port ?? 0,
     async fetch(request) {
-      const url = new URL(request.url);
-      if (url.pathname === "/")
-        return new Response(asset("index.html"), {
-          headers: {
-            "content-type": "text/html; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        });
-      if (url.pathname === "/app.js")
-        return new Response((await clientBundle()).javascript, {
-          headers: {
-            "content-type": "text/javascript; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        });
-      if (url.pathname === "/flow.css")
-        return new Response((await clientBundle()).css, {
-          headers: {
-            "content-type": "text/css; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        });
-      if (url.pathname === "/app.css")
-        return new Response(asset("app.css"), {
-          headers: {
-            "content-type": "text/css; charset=utf-8",
-            "cache-control": "no-store",
-          },
-        });
-      if (!url.pathname.startsWith("/api/"))
-        return new Response("Not found", { status: 404 });
-      const repo = url.searchParams.get("repo") ?? repository?.repositoryId;
-      if (url.pathname === "/api/status")
-        return json({
-          local: true,
-          root: options.root,
-          workspace: loadWorkspaceConfig(options.root),
-          repository,
-          views: graphViews,
-        });
-      if (url.pathname === "/api/graph") {
-        const kinds = url.searchParams
-          .getAll("kind")
-          .filter(Boolean) as EntityKind[];
-        return json(
-          graph.view({
-            repositoryId: repo ?? undefined,
-            view: url.searchParams.get("view") ?? undefined,
-            kinds: kinds.length ? kinds : undefined,
-            limit: Number(url.searchParams.get("limit") ?? "500"),
-            complete: url.searchParams.get("complete") === "1",
-          }),
-        );
-      }
-      if (url.pathname === "/api/search")
-        return json({
-          items: graph.search(
-            url.searchParams.get("q") ?? "",
-            repo ?? undefined,
-          ),
-        });
-      const entityMatch = url.pathname.match(/^\/api\/entity\/([^/]+)$/);
-      if (entityMatch) {
-        const entity = graph.entity(
-          decodeURIComponent(entityMatch[1]!),
-          url.searchParams.get("meta") === "1",
-        );
-        return json(
-          entity ?? { error: "Entity not found" },
-          entity ? 200 : 404,
-        );
-      }
-      const neighborhoodMatch = url.pathname.match(
-        /^\/api\/entity\/([^/]+)\/neighborhood$/,
-      );
-      if (neighborhoodMatch)
-        return json(
-          graph.neighborhood(
-            decodeURIComponent(neighborhoodMatch[1]!),
-            Number(url.searchParams.get("depth") ?? "1"),
+      const res = await (async (): Promise<Response> => {
+        const url = new URL(request.url);
+        if (url.pathname === "/")
+          return new Response(asset("index.html"), {
+            headers: {
+              "content-type": "text/html; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        if (url.pathname === "/app.js")
+          return new Response((await clientBundle()).javascript, {
+            headers: {
+              "content-type": "text/javascript; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        if (url.pathname === "/flow.css")
+          return new Response((await clientBundle()).css, {
+            headers: {
+              "content-type": "text/css; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        if (url.pathname === "/app.css")
+          return new Response(asset("app.css"), {
+            headers: {
+              "content-type": "text/css; charset=utf-8",
+              "cache-control": "no-store",
+            },
+          });
+        if (!url.pathname.startsWith("/api/"))
+          return new Response("Not found", { status: 404 });
+        const repo = url.searchParams.get("repo") ?? repository?.repositoryId;
+        if (url.pathname === "/api/status")
+          return json({
+            local: true,
+            root: options.root,
+            workspace: loadWorkspaceConfig(options.root),
+            repository,
+            views: graphViews,
+          });
+        if (url.pathname === "/api/graph") {
+          const kinds = url.searchParams
+            .getAll("kind")
+            .filter(Boolean) as EntityKind[];
+          return json(
+            graph.view({
+              repositoryId: repo ?? undefined,
+              view: url.searchParams.get("view") ?? undefined,
+              kinds: kinds.length ? kinds : undefined,
+              limit: Number(url.searchParams.get("limit") ?? "500"),
+              complete: url.searchParams.get("complete") === "1",
+            }),
+          );
+        }
+        if (url.pathname === "/api/search")
+          return json({
+            items: graph.search(
+              url.searchParams.get("q") ?? "",
+              repo ?? undefined,
+            ),
+          });
+        const entityMatch = url.pathname.match(/^\/api\/entity\/([^/]+)$/);
+        if (entityMatch) {
+          const entity = graph.entity(
+            decodeURIComponent(entityMatch[1]!),
             url.searchParams.get("meta") === "1",
-          ),
+          );
+          return json(
+            entity ?? { error: "Entity not found" },
+            entity ? 200 : 404,
+          );
+        }
+        const neighborhoodMatch = url.pathname.match(
+          /^\/api\/entity\/([^/]+)\/neighborhood$/,
         );
-      const impactMatch = url.pathname.match(
-        /^\/api\/entity\/([^/]+)\/impact$/,
-      );
-      if (impactMatch)
-        return json(
-          graph.impact(decodeURIComponent(impactMatch[1]!)) ?? {
-            error: "Entity not found",
-          },
-          graph.impact(decodeURIComponent(impactMatch[1]!)) ? 200 : 404,
+        if (neighborhoodMatch)
+          return json(
+            graph.neighborhood(
+              decodeURIComponent(neighborhoodMatch[1]!),
+              Number(url.searchParams.get("depth") ?? "1"),
+              url.searchParams.get("meta") === "1",
+            ),
+          );
+        const impactMatch = url.pathname.match(
+          /^\/api\/entity\/([^/]+)\/impact$/,
         );
-      return new Response("Not found", { status: 404 });
+        if (impactMatch)
+          return json(
+            graph.impact(decodeURIComponent(impactMatch[1]!)) ?? {
+              error: "Entity not found",
+            },
+            graph.impact(decodeURIComponent(impactMatch[1]!)) ? 200 : 404,
+          );
+        return new Response("Not found", { status: 404 });
+      })();
+      const headers = new Headers(res.headers);
+      for (const [k, v] of Object.entries(LOCAL_SECURITY_HEADERS)) {
+        if (!headers.has(k)) headers.set(k, v);
+      }
+      return new Response(res.body, { status: res.status, headers });
     },
   });
   return {
