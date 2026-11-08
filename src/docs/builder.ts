@@ -22,6 +22,15 @@ interface NavItem {
   filePath: string;
 }
 
+interface TreeNode {
+  name: string;
+  isDir: boolean;
+  title: string;
+  url?: string;
+  children: TreeNode[];
+  order: number;
+}
+
 interface NavSection {
   title: string;
   order: number;
@@ -89,6 +98,148 @@ function copyDirectory(src: string, dest: string) {
     } else {
       copyFileSync(sPath, dPath);
     }
+  }
+}
+
+
+const ROOT_DOC_ORDER: Record<string, number> = {
+  "README.md": 1,
+  "getting-started.md": 2,
+  "quickstart.md": 3,
+  "installation.md": 4,
+  "concepts.md": 5,
+  "coverage.md": 6,
+};
+
+function buildFolderTree(dir: string, baseHref: string, rootDir: string): TreeNode {
+  const entries = readdirSync(dir).sort();
+  const children: TreeNode[] = [];
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry);
+    const stat = statSync(fullPath);
+
+    if (stat.isDirectory()) {
+      if (entry === "images") continue;
+      const sub = buildFolderTree(fullPath, baseHref, rootDir);
+      const meta = SECTION_METADATA[entry];
+      sub.title = meta ? meta.title : entry.charAt(0).toUpperCase() + entry.slice(1);
+      sub.order = meta ? meta.order : 99;
+      children.push(sub);
+    } else if (entry.endsWith(".md")) {
+      const relPath = relative(rootDir, fullPath);
+      const relHtmlPath = relPath.replace(/\.md$/, ".html");
+      const targetUrl = `${baseHref}${relHtmlPath === "README.html" ? "index.html" : relHtmlPath}`;
+      const rawContent = readFileSync(fullPath, "utf-8");
+      const fallbackTitle = formatTitleFromFilename(entry);
+      const title = extractTitle(rawContent, fallbackTitle);
+
+      const order = ROOT_DOC_ORDER[entry] ?? (entry === "README.md" ? 1 : 50);
+
+      children.push({
+        name: entry,
+        isDir: false,
+        title,
+        url: targetUrl,
+        children: [],
+        order,
+      });
+    }
+  }
+
+  children.sort((a, b) => {
+    if (a.order !== b.order) return a.order - b.order;
+    return a.title.localeCompare(b.title);
+  });
+
+  const rel = relative(rootDir, dir);
+  const name = rel === "" ? "root" : rel;
+  return {
+    name,
+    isDir: true,
+    title: SECTION_METADATA[name]?.title || name,
+    children,
+    order: SECTION_METADATA[name]?.order || 99,
+  };
+}
+
+function containsActive(node: TreeNode, currentUrl: string): boolean {
+  if (!node.isDir) {
+    return node.url === currentUrl;
+  }
+  return node.children.some((child) => containsActive(child, currentUrl));
+}
+
+function renderTreeToHtml(node: TreeNode, currentUrl: string, depth = 0): string {
+  if (depth === 0) {
+    const rootFiles = node.children.filter((c) => !c.isDir);
+    const rootDirs = node.children.filter((c) => c.isDir);
+
+    const rootFilesHtml = rootFiles
+      .map((file) => {
+        const isActive = file.url === currentUrl;
+        return `
+          <a class="nav-item ${isActive ? "active" : ""}" href="${file.url}">
+            <span class="nav-item-icon file-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            </span>
+            <span class="nav-item-title">${file.title}</span>
+            ${isActive ? `<span class="nav-dot"></span>` : ""}
+          </a>
+        `;
+      })
+      .join("");
+
+    const overviewSection = `
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Getting Started</div>
+        <div class="sidebar-section-items">
+          ${rootFilesHtml}
+        </div>
+      </div>
+    `;
+
+    const dirsHtml = rootDirs.map((dir) => renderTreeToHtml(dir, currentUrl, depth + 1)).join("");
+
+    return `
+      ${overviewSection}
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Documentation Tree</div>
+        <div class="sidebar-tree-container">
+          ${dirsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  if (node.isDir) {
+    const isExpanded = containsActive(node, currentUrl);
+    const childrenHtml = node.children.map((c) => renderTreeToHtml(c, currentUrl, depth + 1)).join("");
+    return `
+      <div class="tree-folder ${isExpanded ? "open" : ""}" data-folder-path="${node.name}">
+        <button type="button" class="tree-folder-header" aria-expanded="${isExpanded ? "true" : "false"}">
+          <svg class="chevron-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          <svg class="folder-icon folder-closed" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <svg class="folder-icon folder-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="2" y1="10" x2="22" y2="10"></line></svg>
+          <span class="tree-folder-title">${node.title}</span>
+          <span class="tree-count">${node.children.length}</span>
+        </button>
+        <div class="tree-children">
+          ${childrenHtml}
+        </div>
+      </div>
+    `;
+  } else {
+    const isActive = node.url === currentUrl;
+    return `
+      <a class="nav-item tree-file-item ${isActive ? "active" : ""}" href="${node.url}">
+        <span class="nav-item-icon file-icon">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        </span>
+        <span class="nav-item-title">${node.title}</span>
+        ${isActive ? `<span class="nav-dot"></span>` : ""}
+      </a>
+    `;
   }
 }
 
@@ -255,6 +406,8 @@ export function buildDocumentation(options: { baseHref?: string; outDir?: string
     },
   });
 
+  const folderTree = buildFolderTree(docsDir, baseHref, docsDir);
+
   // Render each page
   for (const doc of parsedDocs) {
     const htmlBody = marked.parse(doc.rawContent) as string;
@@ -264,7 +417,7 @@ export function buildDocumentation(options: { baseHref?: string; outDir?: string
       title: doc.title,
       currentUrl: doc.targetUrl,
       contentHtml: htmlBody,
-      sections: sortedSections,
+      folderTree,
       toc,
       baseHref,
       searchIndexJson: JSON.stringify(searchIndex),
@@ -286,35 +439,12 @@ function generateDocPageHtml(data: {
   title: string;
   currentUrl: string;
   contentHtml: string;
-  sections: Array<NavSection & { key: string }>;
+  folderTree: TreeNode;
   toc: { id: string; text: string; level: number }[];
   baseHref: string;
   searchIndexJson: string;
 }): string {
-  const sidebarHtml = data.sections
-    .map((section) => {
-      const itemsHtml = section.items
-        .map((item) => {
-          const isActive = item.url === data.currentUrl;
-          return `
-            <a class="nav-item ${isActive ? "active" : ""}" href="${item.url}">
-              <span>${item.title}</span>
-              ${isActive ? `<span class="nav-dot"></span>` : ""}
-            </a>
-          `;
-        })
-        .join("");
-
-      return `
-        <div class="sidebar-section">
-          <div class="sidebar-section-title">${section.title}</div>
-          <div class="sidebar-section-items">
-            ${itemsHtml}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+  const sidebarHtml = renderTreeToHtml(data.folderTree, data.currentUrl);
 
   const tocHtml = data.toc.length
     ? data.toc
@@ -471,7 +601,181 @@ function generateDocPageHtml(data: {
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
     }
-    .sidebar-section {
+    .sidebar-tree-container {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .tree-folder {
+      display: flex;
+      flex-direction: column;
+    }
+    .tree-folder-header {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 550;
+      text-align: left;
+      transition: all 120ms ease;
+      user-select: none;
+    }
+    .tree-folder-header:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+    }
+    .tree-folder.open > .tree-folder-header {
+      color: var(--text);
+    }
+    .tree-folder-header .chevron-icon {
+      transition: transform 180ms ease;
+      color: var(--subtle);
+      flex-shrink: 0;
+    }
+    .tree-folder.open > .tree-folder-header .chevron-icon {
+      transform: rotate(90deg);
+      color: var(--accent);
+    }
+    .tree-folder-header .folder-icon {
+      color: var(--subtle);
+      flex-shrink: 0;
+    }
+    .tree-folder-header .folder-open {
+      display: none;
+    }
+    .tree-folder.open > .tree-folder-header .folder-closed {
+      display: none;
+    }
+    .tree-folder.open > .tree-folder-header .folder-open {
+      display: inline-block;
+      color: var(--teal);
+    }
+    .tree-folder-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tree-count {
+      font-size: 10px;
+      color: var(--subtle);
+      padding: 1px 6px;
+      border-radius: 10px;
+      background: #1a1e24;
+      border: 1px solid var(--border);
+    }
+    .tree-children {
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      margin-left: 12px;
+      padding-left: 10px;
+      border-left: 1px solid #232830;
+      margin-top: 2px;
+      margin-bottom: 6px;
+    }
+    .tree-folder.open > .tree-children {
+      display: flex;
+    }
+    .nav-item-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--subtle);
+      flex-shrink: 0;
+      margin-right: 7px;
+    }
+    .nav-item.active .nav-item-icon {
+      color: var(--accent);
+    }
+    .nav-item-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .nav-item.tree-file-item {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    /* Floating scroll to top button */
+    .scroll-top-btn {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #1e232b;
+      border: 1px solid #333a46;
+      color: var(--accent);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(12px);
+      transition: opacity 200ms ease, transform 200ms ease, background 150ms ease, border-color 150ms ease;
+      z-index: 50;
+    }
+    .scroll-top-btn.visible {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+    .scroll-top-btn:hover {
+      background: #252c36;
+      border-color: var(--accent);
+      color: #bdfae8;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
+
+    /* Mobile drawer overlay & hamburger button */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(2px);
+      z-index: 80;
+    }
+    .mobile-menu-btn {
+      display: none;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px;
+      color: var(--text);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+    }
+    .mobile-menu-btn:hover {
+      background: var(--surface-hover);
+    }
+    .mobile-brand {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-weight: 650;
+      font-size: 15px;
+    }
+    .mobile-brand span {
+      color: var(--accent);
+    }
+
+        .sidebar-section {
       margin-bottom: 18px;
     }
     .sidebar-section-title {
@@ -813,8 +1117,29 @@ function generateDocPageHtml(data: {
       .layout {
         grid-template-columns: 1fr;
       }
+      .mobile-menu-btn {
+        display: inline-flex;
+      }
+      .mobile-brand {
+        display: inline-flex;
+      }
       .sidebar {
-        display: none;
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        z-index: 90;
+        transform: translateX(-100%);
+        transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+        box-shadow: none;
+      }
+      .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 0 0 30px rgba(0,0,0,0.7);
+      }
+      .sidebar-overlay.open {
+        display: block;
       }
       .content-header {
         padding: 0 16px;
@@ -822,13 +1147,20 @@ function generateDocPageHtml(data: {
       .markdown-body {
         padding: 24px 20px 60px;
       }
+      .scroll-top-btn {
+        bottom: 20px;
+        right: 20px;
+        width: 38px;
+        height: 38px;
+      }
     }
   </style>
 </head>
 <body>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
   <div class="layout">
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="brand-header">
         <div class="brand-mark">V</div>
         <div class="brand-title">Vogoban<span>Docs</span></div>
@@ -849,13 +1181,26 @@ function generateDocPageHtml(data: {
     <!-- Main Content -->
     <main class="content-area">
       <header class="content-header">
-        <div class="breadcrumb-trail">
-          <span>Docs</span>
-          <span>/</span>
-          <strong>${data.title}</strong>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button type="button" class="mobile-menu-btn" id="mobile-menu-toggle" aria-label="Toggle Navigation">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="mobile-brand">
+            <div class="brand-mark" style="width:24px;height:24px;font-size:12px;border-radius:6px;">V</div>
+            <span>Vogoban</span>
+          </div>
+          <div class="breadcrumb-trail">
+            <span>Docs</span>
+            <span>/</span>
+            <strong>${data.title}</strong>
+          </div>
         </div>
         <div class="header-links">
-          <a href="https://github.com/vogoban/vogoban" target="_blank" rel="noopener noreferrer" class="github-btn">
+          <a href="https://github.com/Smx27/vogoban" target="_blank" rel="noopener noreferrer" class="github-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
             </svg>
@@ -867,6 +1212,11 @@ function generateDocPageHtml(data: {
       <article class="markdown-body">
         ${data.contentHtml}
       </article>
+      <button type="button" class="scroll-top-btn" id="scroll-top-btn" aria-label="Go to top" title="Go to top">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+      </button>
     </main>
 
     <!-- Table of Contents Panel -->
@@ -896,6 +1246,64 @@ function generateDocPageHtml(data: {
   </div>
 
   <script>
+    // Folder tree expand / collapse
+    document.querySelectorAll('.tree-folder-header').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const folder = btn.closest('.tree-folder');
+        if (folder) {
+          const isOpen = folder.classList.toggle('open');
+          btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }
+      });
+    });
+
+    // Mobile sidebar drawer toggle
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+
+    function openMobileSidebar() {
+      if (sidebar && overlay) {
+        sidebar.classList.add('open');
+        overlay.classList.add('open');
+      }
+    }
+
+    function closeMobileSidebar() {
+      if (sidebar && overlay) {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('open');
+      }
+    }
+
+    if (mobileMenuToggle) {
+      mobileMenuToggle.addEventListener('click', openMobileSidebar);
+    }
+    if (overlay) {
+      overlay.addEventListener('click', closeMobileSidebar);
+    }
+
+    // Scroll to top functionality
+    const contentArea = document.querySelector('.content-area');
+    const scrollTopBtn = document.getElementById('scroll-top-btn');
+
+    if (contentArea && scrollTopBtn) {
+      contentArea.addEventListener('scroll', () => {
+        if (contentArea.scrollTop > 240) {
+          scrollTopBtn.classList.add('visible');
+        } else {
+          scrollTopBtn.classList.remove('visible');
+        }
+      });
+
+      scrollTopBtn.addEventListener('click', () => {
+        contentArea.scrollTo({
+          top: 0,
+          behavior: 'smooth',
+        });
+      });
+    }
+
     const searchIndex = ${data.searchIndexJson};
     const modal = document.getElementById('search-modal');
     const searchTrigger = document.getElementById('search-trigger');
