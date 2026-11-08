@@ -1,0 +1,4 @@
+## 2026-11-08 - Path traversal in static documentation preview server
+**Vulnerability:** In `src/docs/server.ts`, static files were served by computing `join(outDir, decodeURIComponent(url.pathname))`. `join` with leading slashes resolves relative to root directory segments or relative sequences like `/../../../etc/passwd`, allowing an attacker to read arbitrary files from the filesystem. Additionally, the server bound to all interfaces by default.
+**Learning:** `Bun.serve` without an explicit `hostname` binds to all network interfaces (`0.0.0.0`), and path joining on decoded URL paths without checking canonical path boundaries allows directory traversal out of static document roots.
+**Prevention:** Always bind development and preview servers explicitly to `127.0.0.1` unless external access is intended, and enforce prefix bounds checking (`target === root || target.startsWith(root + sep)`) on `path.resolve` outputs before disk access.
