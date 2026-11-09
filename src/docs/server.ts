@@ -1,42 +1,67 @@
 import { serve } from "bun";
-import { existsSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { buildDocumentation } from "./builder";
 
-const port = parseInt(process.env.PORT || "3000", 10);
-const outDir = resolve(process.cwd(), "dist/docs");
+export function createDocsServer(options: {
+  port?: number;
+  outDir?: string;
+  rebuild?: boolean;
+} = {}) {
+  const port = options.port ?? parseInt(process.env.PORT || "3000", 10);
+  const outDir = resolve(options.outDir ?? join(process.cwd(), "dist/docs"));
 
-// Rebuild docs on start
-buildDocumentation({ baseHref: "/", outDir });
+  if (options.rebuild ?? true) {
+    buildDocumentation({ baseHref: "/", outDir });
+  }
 
-const server = serve({
-  port,
-  fetch(req) {
-    const url = new URL(req.url);
-    let pathname = decodeURIComponent(url.pathname);
-    if (pathname === "/" || pathname === "") {
-      pathname = "/index.html";
+  const realOutDir = existsSync(outDir) ? realpathSync(outDir) : outDir;
+
+  // Security: Canonicalize path and ensure symlinks or traversals cannot escape outDir
+  const isSafeRealFile = (target: string): boolean => {
+    try {
+      if (!existsSync(target)) return false;
+      const real = realpathSync(target);
+      return real === realOutDir || real.startsWith(realOutDir + sep);
+    } catch {
+      return false;
     }
+  };
 
-    const filePath = join(outDir, pathname);
-    if (existsSync(filePath) && !statSync(filePath).isDirectory()) {
-      return new Response(Bun.file(filePath));
-    }
+  return serve({
+    hostname: "127.0.0.1",
+    port,
+    fetch(req) {
+      const url = new URL(req.url);
+      let pathname = decodeURIComponent(url.pathname);
+      if (pathname === "/" || pathname === "") {
+        pathname = "/index.html";
+      }
 
-    // Try appending .html
-    const htmlFile = `${filePath}.html`;
-    if (existsSync(htmlFile)) {
-      return new Response(Bun.file(htmlFile));
-    }
+      // Security: resolve target path and verify canonical path stays inside outDir
+      const filePath = resolve(outDir, "." + (pathname.startsWith("/") ? pathname : "/" + pathname));
 
-    // Try index.html in directory
-    const dirIndex = join(filePath, "index.html");
-    if (existsSync(dirIndex)) {
-      return new Response(Bun.file(dirIndex));
-    }
+      if (isSafeRealFile(filePath) && !statSync(filePath).isDirectory()) {
+        return new Response(Bun.file(filePath));
+      }
 
-    return new Response("Not Found", { status: 404 });
-  },
-});
+      const htmlFile = `${filePath}.html`;
+      if (isSafeRealFile(htmlFile) && !statSync(htmlFile).isDirectory()) {
+        return new Response(Bun.file(htmlFile));
+      }
 
-console.log(`[vogoban docs] Local preview server running at http://localhost:${server.port}`);
+      const dirIndex = join(filePath, "index.html");
+      if (isSafeRealFile(dirIndex) && !statSync(dirIndex).isDirectory()) {
+        return new Response(Bun.file(dirIndex));
+      }
+
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+}
+
+// Start server when executed directly as script
+if (import.meta.main) {
+  const server = createDocsServer();
+  console.log(`[vogoban docs] Local preview server running at http://127.0.0.1:${server.port}`);
+}
