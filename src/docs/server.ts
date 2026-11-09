@@ -1,5 +1,5 @@
 import { serve } from "bun";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { buildDocumentation } from "./builder";
 
@@ -15,9 +15,18 @@ export function createDocsServer(options: {
     buildDocumentation({ baseHref: "/", outDir });
   }
 
-  // Security: Ensure path traversal attempts outside outDir are blocked, and bind loopback
-  const isSafePath = (target: string) =>
-    target === outDir || target.startsWith(outDir + sep);
+  const realOutDir = existsSync(outDir) ? realpathSync(outDir) : outDir;
+
+  // Security: Canonicalize path and ensure symlinks or traversals cannot escape outDir
+  const isSafeRealFile = (target: string): boolean => {
+    try {
+      if (!existsSync(target)) return false;
+      const real = realpathSync(target);
+      return real === realOutDir || real.startsWith(realOutDir + sep);
+    } catch {
+      return false;
+    }
+  };
 
   return serve({
     hostname: "127.0.0.1",
@@ -29,23 +38,20 @@ export function createDocsServer(options: {
         pathname = "/index.html";
       }
 
-      // Security: resolve target path and verify it stays inside outDir to prevent directory traversal
+      // Security: resolve target path and verify canonical path stays inside outDir
       const filePath = resolve(outDir, "." + (pathname.startsWith("/") ? pathname : "/" + pathname));
-      if (!isSafePath(filePath)) {
-        return new Response("Not Found", { status: 404 });
-      }
 
-      if (existsSync(filePath) && !statSync(filePath).isDirectory()) {
+      if (isSafeRealFile(filePath) && !statSync(filePath).isDirectory()) {
         return new Response(Bun.file(filePath));
       }
 
       const htmlFile = `${filePath}.html`;
-      if (isSafePath(htmlFile) && existsSync(htmlFile)) {
+      if (isSafeRealFile(htmlFile) && !statSync(htmlFile).isDirectory()) {
         return new Response(Bun.file(htmlFile));
       }
 
       const dirIndex = join(filePath, "index.html");
-      if (isSafePath(dirIndex) && existsSync(dirIndex)) {
+      if (isSafeRealFile(dirIndex) && !statSync(dirIndex).isDirectory()) {
         return new Response(Bun.file(dirIndex));
       }
 

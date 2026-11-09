@@ -1,5 +1,5 @@
 import { describe, expect, it, afterAll, beforeAll } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDocsServer } from "../../src/docs/server";
@@ -23,6 +23,10 @@ describe("documentation server security", () => {
     // Place a sensitive file outside docs
     secretFile = join(tempDir, "secret.txt");
     writeFileSync(secretFile, "SUPER_SECRET_TOKEN_DO_NOT_EXPOSE");
+
+    // Create a symlink inside outDir pointing to a file outside outDir
+    symlinkSync(secretFile, join(outDir, "escaped-link.txt"));
+    symlinkSync(secretFile, join(outDir, "escaped-link.html"));
 
     server = createDocsServer({
       port: 0,
@@ -71,5 +75,15 @@ describe("documentation server security", () => {
       expect(text).not.toContain("SUPER_SECRET_TOKEN_DO_NOT_EXPOSE");
       expect(text).not.toContain("root:");
     }
+  });
+
+  it("prevents accessing files outside outDir via symlinks", async () => {
+    const resDirect = await fetch(`http://127.0.0.1:${server.port}/escaped-link.txt`);
+    expect(resDirect.status).toBe(404);
+    expect(await resDirect.text()).not.toContain("SUPER_SECRET_TOKEN_DO_NOT_EXPOSE");
+
+    const resHtml = await fetch(`http://127.0.0.1:${server.port}/escaped-link`);
+    expect(resHtml.status).toBe(404);
+    expect(await resHtml.text()).not.toContain("SUPER_SECRET_TOKEN_DO_NOT_EXPOSE");
   });
 });
