@@ -7,6 +7,7 @@ from playwright.async_api import async_playwright
 DURATION_SEC = 60.5
 TEMP_DIR = "showcase/temp_record"
 OUTPUT_MP4 = "showcase/vogoban-showcase.mp4"
+AUDIO_TRACK = "showcase/audio/narration.mp3"
 
 async def record_showcase():
     os.makedirs(TEMP_DIR, exist_ok=True)
@@ -52,19 +53,23 @@ async def record_showcase():
         await context.close()
         await browser.close()
 
-        # Now convert/transcode to high-quality MP4 using FFmpeg
-        print(f"Transcoding {video_path} to {OUTPUT_MP4} (H.264 / 1920x1080 / 30fps / yuv420p)...")
+        # Now convert/transcode to high-quality 60 FPS MP4 with TTS Audio using FFmpeg
+        print(f"Transcoding {video_path} + {AUDIO_TRACK} to {OUTPUT_MP4} (H.264 60fps + AAC audio)...")
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
             "-i", video_path,
+            "-i", AUDIO_TRACK,
             "-t", "60",
-            "-r", "30",
-            "-vf", "scale=1920:1080",
+            "-r", "60",
+            "-vf", "scale=1920:1080,fps=60",
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
             "-preset", "medium",
             "-crf", "18",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-shortest",
             OUTPUT_MP4
         ]
         res = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
