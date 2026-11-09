@@ -2,7 +2,7 @@ import { describe, expect, it, afterAll, beforeAll } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDocsServer } from "../../src/docs/server";
+import { createDocsServer, DOCS_SECURITY_HEADERS } from "../../src/docs/server";
 
 describe("documentation server security", () => {
   let tempDir: string;
@@ -52,6 +52,20 @@ describe("documentation server security", () => {
     const resGuide = await fetch(`http://127.0.0.1:${server.port}/guide`);
     expect(resGuide.status).toBe(200);
     expect(await resGuide.text()).toContain("Guide");
+  });
+
+  it("serves responses with defensive security headers", async () => {
+    expect(DOCS_SECURITY_HEADERS["x-content-type-options"]).toBe("nosniff");
+    expect(DOCS_SECURITY_HEADERS["x-frame-options"]).toBe("DENY");
+    expect(DOCS_SECURITY_HEADERS["referrer-policy"]).toBe("no-referrer");
+    expect(DOCS_SECURITY_HEADERS["content-security-policy"]).toContain("frame-ancestors 'none'");
+
+    for (const path of ["/", "/guide", "/nonexistent"]) {
+      const res = await fetch(`http://127.0.0.1:${server.port}${path}`);
+      for (const [header, expectedValue] of Object.entries(DOCS_SECURITY_HEADERS)) {
+        expect(res.headers.get(header)).toBe(expectedValue);
+      }
+    }
   });
 
   it("prevents path traversal attempts to access files outside outDir", async () => {
