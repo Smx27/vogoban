@@ -59,6 +59,8 @@ describe("documentation server security", () => {
     expect(DOCS_SECURITY_HEADERS["x-frame-options"]).toBe("DENY");
     expect(DOCS_SECURITY_HEADERS["referrer-policy"]).toBe("no-referrer");
     expect(DOCS_SECURITY_HEADERS["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(DOCS_SECURITY_HEADERS["content-security-policy"]).toContain("script-src 'self'");
+    expect(DOCS_SECURITY_HEADERS["content-security-policy"]).not.toContain("script-src 'self' 'unsafe-inline'");
 
     for (const path of ["/", "/guide", "/nonexistent"]) {
       const res = await fetch(`http://127.0.0.1:${server.port}${path}`);
@@ -66,6 +68,15 @@ describe("documentation server security", () => {
         expect(res.headers.get(header)).toBe(expectedValue);
       }
     }
+  });
+
+  it("serves external docs.js asset under script-src 'self'", async () => {
+    writeFileSync(join(outDir, "docs.js"), "console.log('docs client');");
+    const res = await fetch(`http://127.0.0.1:${server.port}/docs.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
+    expect(await res.text()).toContain("console.log('docs client');");
   });
 
   it("prevents path traversal attempts to access files outside outDir", async () => {

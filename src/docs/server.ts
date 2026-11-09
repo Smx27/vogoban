@@ -14,7 +14,7 @@ export const DOCS_SECURITY_HEADERS: Record<string, string> = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
   "referrer-policy": "no-referrer",
-  "content-security-policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'",
+  "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'",
 };
 
 export function createDocsServer(options: {
