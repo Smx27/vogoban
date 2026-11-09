@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<!--
+  Vogoban Product Showcase Video (60 Seconds)
+  Built with Bang Motion skill (https://github.com/bangtutorial/bang-motion)
+  16:9 Aspect Ratio (1920x1080 Stage)
+  Concept: Living UI Ecosystem & Deterministic Architecture Graph Tour
+-->
+<head>
+<meta charset="utf-8">
+<title>Vogoban — Architecture Intelligence Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+<style>
+:root {
+  --base: #080c14;
+  --panel: #0d131f;
+  --surface: #131c2e;
+  --border: rgba(148, 163, 184, 0.15);
+  --border-bright: rgba(56, 189, 248, 0.35);
+  --sky: #38bdf8;
+  --emerald: #10b981;
+  --violet: #8b5cf6;
+  --amber: #f59e0b;
+  --ink: #f8fafc;
+  --ink-muted: #94a3b8;
+  --ink-faint: #64748b;
+  --glow-cyan: rgba(56, 189, 248, 0.22);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%; background: #020408; overflow: hidden;
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+#filters { position: fixed; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+/* 1920x1080 fixed stage scaled responsively */
+#stage {
+  position: fixed; left: 50%; top: 50%;
+  width: 1920px; height: 1080px;
+  transform: translate(-50%, -50%) scale(1);
+  overflow: hidden;
+  background: var(--base);
+}
+
+#world {
+  position: absolute; inset: 0;
+  perspective: 1400px;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* Background Atmosphere */
+.bg-grid {
+  position: absolute; inset: -200px;
+  background-image:
+    radial-gradient(circle at 50% 50%, rgba(56, 189, 248, 0.05) 1.5px, transparent 1.5px),
+    linear-gradient(to right, rgba(255,255,255,0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.015) 1px, transparent 1px);
+  background-size: 48px 48px, 96px 96px, 96px 96px;
+  pointer-events: none;
+  opacity: 0.65;
+}
+
+.bg-aurora {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(16, 185, 129, 0.08) 0%, transparent 55%),
+    radial-gradient(circle at 80% 65%, rgba(56, 189, 248, 0.09) 0%, transparent 60%),
+    radial-gradient(circle at 50% 85%, rgba(139, 92, 246, 0.07) 0%, transparent 50%);
+  mix-blend-mode: screen;
+}
+
+.vignette {
+  position: absolute; inset: 0; pointer-events: none; z-index: 40;
+  background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 40%, rgba(5, 8, 14, 0.85) 100%);
+}
+
+.leak {
+  position: absolute; left: 50%; top: 50%; width: 2200px; height: 2200px;
+  margin: -1100px 0 0 -1100px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.45) 0%, rgba(16, 185, 129, 0.2) 35%, transparent 70%);
+  filter: blur(80px); mix-blend-mode: screen; opacity: 0; pointer-events: none; z-index: 50;
+}
+
+/* UI Structure */
+#dom { position: absolute; inset: 0; }
+
+.act {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+
+/* Typography styles */
+.display-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 88px; font-weight: 700; line-height: 1.05;
+  letter-spacing: -0.03em; color: #ffffff;
+  text-shadow: 0 4px 30px rgba(0,0,0,0.7);
+  white-space: nowrap;
+}
+.display-sub {
+  font-size: 34px; font-weight: 500; color: var(--ink-muted);
+  letter-spacing: -0.01em; margin-top: 18px; line-height: 1.4;
+}
+
+.mono-tag {
+  font-family: 'Fira Code', monospace;
+  font-size: 20px; font-weight: 500;
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--sky);
+  padding: 6px 14px; border-radius: 6px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+
+/* ACT 1: Chaotic Monolith */
+#act1-container {
+  width: 1300px; height: 750px; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.file-swarm {
+  position: absolute; inset: 0; pointer-events: none;
+}
+.swarm-node {
+  position: absolute;
+  padding: 10px 18px; border-radius: 8px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-family: 'Fira Code', monospace; font-size: 16px; color: var(--ink-muted);
+  display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+}
+.swarm-node.amber { border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; }
+.swarm-node.emerald { border-color: rgba(16, 185, 129, 0.4); color: #34d399; }
+.swarm-node.sky { border-color: rgba(56, 189, 248, 0.4); color: #7dd3fc; }
+
+/* ACT 2: Roslyn Parser Terminal */
+#act2-terminal {
+  width: 1100px; height: 600px;
+  background: rgba(11, 17, 28, 0.95);
+  border: 1px solid var(--border-bright);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.65), 0 0 40px rgba(56, 189, 248, 0.15);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.term-header {
+  height: 52px; background: rgba(18, 28, 45, 0.9);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
+}
+.term-dots { display: flex; gap: 8px; }
+.term-dots span { width: 13px; height: 13px; border-radius: 50%; display: inline-block; }
+.term-body {
+  flex: 1; padding: 34px 40px; font-family: 'Fira Code', monospace;
+  font-size: 22px; line-height: 1.8; color: #e2e8f0;
+}
+.term-line { display: flex; align-items: center; gap: 14px; opacity: 0; transform: translateY(8px); }
+.term-line .prompt { color: var(--sky); font-weight: 600; }
+.term-line .keyword { color: var(--emerald); font-weight: 600; }
+.term-line .highlight { color: #f8fafc; font-weight: 600; }
+.term-badge {
+  font-size: 15px; padding: 4px 10px; border-radius: 4px;
+  background: rgba(16, 185, 129, 0.2); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+/* ACT 3 & 4: Living Graph Canvas */
+#act3-canvas {
+  width: 1680px; height: 920px;
+  background: #0d131f; border: 1px solid var(--border);
+  border-radius: 20px; position: relative; overflow: hidden;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.7), 0 0 50px rgba(16, 185, 129, 0.1);
+}
+.canvas-nav {
+  height: 68px; background: #0b111c; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
+}
+.brand-mark {
+  display: flex; align-items: center; gap: 12px;
+  font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; color: #fff;
+}
+.brand-icon {
+  width: 38px; height: 38px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--sky), var(--emerald));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; color: #080c14; font-weight: 800;
+}
+.canvas-body {
+  position: absolute; inset: 68px 0 0 0;
+  display: flex;
+}
+.canvas-sidebar {
+  width: 280px; background: #090e18; border-right: 1px solid var(--border);
+  padding: 24px; display: flex; flex-direction: column; gap: 18px;
+}
+.side-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 16px; border-radius: 10px; font-size: 18px; font-weight: 500; color: var(--ink-muted);
+}
+.side-item.active {
+  background: rgba(56, 189, 248, 0.12); color: var(--sky); border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.canvas-viewport {
+  flex: 1; position: relative; overflow: hidden;
+}
+
+/* SVG Graph Edges */
+#graph-svg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+}
+.graph-wire {
+  stroke: rgba(148, 163, 184, 0.25); stroke-width: 2.5; stroke-dasharray: 8 6;
+  fill: none;
+}
+.wire-active {
+  stroke: var(--sky); stroke-width: 3.5; stroke-dasharray: none;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.7));
+}
+.wire-emerald {
+  stroke: var(--emerald); stroke-width: 3.5; stroke-dasharray: none;
+  filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.7));
+}
+.wire-violet {
+  stroke: var(--violet); stroke-width: 3.5; stroke-dasharray: none;
+  filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.7));
+}
+
+/* Graph Nodes */
+.graph-node {
+  position: absolute; border-radius: 14px;
+  background: rgba(18, 27, 44, 0.95);
+  border: 1px solid var(--border);
+  padding: 18px 24px; min-width: 250px;
+  box-shadow: 0 14px 40px rgba(0,0,0,0.5);
+  transform-origin: center center;
+}
+.graph-node.active-focus {
+  border-color: var(--sky);
+  box-shadow: 0 0 35px rgba(56, 189, 248, 0.4), 0 20px 45px rgba(0,0,0,0.6);
+}
+.node-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.node-type {
+  font-family: 'Fira Code', monospace; font-size: 13px; text-transform: uppercase;
+  color: var(--ink-faint); letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px;
+}
+.node-type .dot { width: 8px; height: 8px; border-radius: 50%; }
+.node-title {
+  font-size: 20px; font-weight: 700; color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+}
+.node-meta {
+  font-family: 'Fira Code', monospace; font-size: 14px; color: var(--ink-muted); margin-top: 6px;
+}
+
+/* Entity Inspector Popout */
+#inspector-panel {
+  position: absolute; right: 30px; top: 95px; width: 440px;
+  background: rgba(11, 18, 30, 0.96);
+  border: 1px solid var(--sky); border-radius: 14px;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.7), 0 0 30px rgba(56, 189, 248, 0.25);
+  padding: 24px; transform: translateX(120%); opacity: 0;
+}
+.inspect-title {
+  font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; color: #fff;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.inspect-list { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.inspect-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-radius: 8px; background: rgba(255,255,255,0.03);
+  font-family: 'Fira Code', monospace; font-size: 15px; color: #cbd5e1;
+}
+
+/* ACT 5: Local Sovereign Shield */
+#act5-sovereign {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  max-width: 1200px;
+}
+.shield-emblem {
+  width: 130px; height: 130px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.02) 70%);
+  border: 2px solid var(--emerald);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 50px rgba(16, 185, 129, 0.35);
+  margin-bottom: 34px;
+}
+.metrics-deck {
+  display: flex; gap: 32px; margin-top: 50px;
+}
+.metric-card {
+  background: rgba(15, 23, 42, 0.85); border: 1px solid var(--border);
+  padding: 26px 36px; border-radius: 14px; text-align: left;
+  box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+}
+.metric-num {
+  font-family: 'Space Grotesk', sans-serif; font-size: 54px; font-weight: 700; color: var(--emerald);
+  font-variant-numeric: tabular-nums;
+}
+.metric-lbl {
+  font-size: 18px; color: var(--ink-muted); margin-top: 4px;
+}
+
+/* ACT 6: Multi-Stack Pillars */
+#act6-pillars {
+  display: flex; gap: 36px; align-items: center; justify-content: center;
+}
+.stack-pillar {
+  width: 320px; height: 440px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 18px; padding: 32px 28px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  position: relative; overflow: hidden;
+}
+.stack-pillar::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+}
+.pillar-dotnet::before { background: var(--emerald); }
+.pillar-ts::before { background: var(--sky); }
+.pillar-azure::before { background: var(--violet); }
+.pillar-sqlite::before { background: var(--amber); }
+
+.stack-glyph {
+  width: 72px; height: 72px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 800; margin-bottom: 24px;
+}
+.glyph-dotnet { background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+.glyph-ts { background: rgba(56, 189, 248, 0.15); color: var(--sky); border: 1px solid rgba(56, 189, 248, 0.3); }
+.glyph-azure { background: rgba(139, 92, 246, 0.15); color: var(--violet); border: 1px solid rgba(139, 92, 246, 0.3); }
+.glyph-sqlite { background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+
+/* ACT 7: Final Manifesto & Logo */
+#act7-brand {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+}
+.brand-hero-logo {
+  display: flex; align-items: center; gap: 20px; margin-bottom: 28px;
+}
+.brand-hero-glyph {
+  width: 90px; height: 90px; border-radius: 20px;
+  background: linear-gradient(135deg, var(--sky), var(--emerald));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 48px; color: #080c14; font-weight: 800;
+  box-shadow: 0 0 60px rgba(56, 189, 248, 0.5);
+}
+.brand-hero-text {
+  font-family: 'Space Grotesk', sans-serif; font-size: 110px; font-weight: 700;
+  letter-spacing: -0.04em; color: #ffffff;
+}
+
+/* Developer Scrub Controls (?debug=1) */
+#ui {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  display: none; align-items: center; gap: 16px; padding: 12px 22px; border-radius: 16px;
+  background: rgba(10, 15, 25, 0.95); border: 1px solid rgba(255,255,255,0.15);
+  font-size: 14px; color: #cbd5e1; z-index: 100;
+}
+#ui.on { display: flex; }
+#ui button {
+  background: #1e293b; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+  padding: 8px 18px; border-radius: 8px; font: inherit; cursor: pointer;
+}
+#scrub { width: 440px; accent-color: var(--sky); }
+#clock { font-family: 'Fira Code', monospace; font-variant-numeric: tabular-nums; min-width: 6ch; text-align: right; }
+</style>
+</head>
+<body>
+
+<svg id="filters">
+  <defs>
+    <!-- Filter definitions populated dynamically for directional motion blurs -->
+  </defs>
+</svg>
+
+<div id="stage">
+  <div id="world">
+    <div class="bg-grid"></div>
+    <div class="bg-aurora"></div>
+
+    <div id="dom">
+
+      <!-- ACT 1: Chaotic Monolith (0.00 - 07.50s) -->
+      <section class="act" id="act1">
+        <div id="act1-container">
+          <div class="file-swarm" id="swarm">
+            <!-- 16 floating code artifact chips -->
+            <div class="swarm-node amber" style="left:80px; top:120px;"><span>Contoso.Orders.Api.csproj</span></div>
+            <div class="swarm-node emerald" style="left:760px; top:80px;"><span>OrdersController.cs</span></div>
+            <div class="swarm-node sky" style="left:240px; top:540px;"><span>routes/orders.tsx</span></div>
+            <div class="swarm-node" style="left:920px; top:490px;"><span>azuredeploy.bicep</span></div>
+            <div class="swarm-node amber" style="left:380px; top:220px;"><span>GET /api/orders/{id}</span></div>
+            <div class="swarm-node emerald" style="left:820px; top:280px;"><span>OrderDbContext.cs</span></div>
+            <div class="swarm-node sky" style="left:120px; top:360px;"><span>OrdersTable.tsx</span></div>
+            <div class="swarm-node" style="left:980px; top:180px;"><span>CreateOrderCommand.cs</span></div>
+            <div class="swarm-node emerald" style="left:520px; top:560px;"><span>OrderSubmittedEvent.cs</span></div>
+            <div class="swarm-node" style="left:60px; top:640px;"><span>ServiceBusListener.cs</span></div>
+            <div class="swarm-node sky" style="left:720px; top:640px;"><span>api/client.ts</span></div>
+            <div class="swarm-node amber" style="left:1060px; top:360px;"><span>appsettings.Production.json</span></div>
+          </div>
+          <div style="text-align: center; position: relative; z-index: 5;">
+            <div class="mono-tag" id="act1-tag">LEGACY CODEBASE DRIFT</div>
+            <h1 class="display-title" id="act1-title" style="margin-top: 20px;">Architecture is invisible.</h1>
+            <p class="display-sub" id="act1-sub">Distributed systems grow beyond human comprehension.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 2: Roslyn Parser Terminal (07.50 - 16.00s) -->
+      <section class="act" id="act2">
+        <div id="act2-terminal">
+          <div class="term-header">
+            <div class="term-dots">
+              <span style="background:#ef4444;"></span>
+              <span style="background:#eab308;"></span>
+              <span style="background:#10b981;"></span>
+            </div>
+            <span style="font-family:'Fira Code'; font-size:14px; color:var(--ink-muted);">vogoban-cli v0.8.4 · engine/roslyn</span>
+            <span style="font-family:'Fira Code'; font-size:14px; color:var(--emerald);">● LOCAL</span>
+          </div>
+          <div class="term-body">
+            <div class="term-line" id="tl-1">
+              <span class="prompt">$</span>
+              <span>vogoban graph ./Contoso.Orders --deep-semantic</span>
+            </div>
+            <div class="term-line" id="tl-2" style="margin-top:16px;">
+              <span class="keyword">» [Roslyn]</span>
+              <span>Compiling semantic symbols across 18 C# projects...</span>
+              <span class="term-badge">SYNTAX &amp; TYPE-BOUND</span>
+            </div>
+            <div class="term-line" id="tl-3">
+              <span class="keyword" style="color:var(--sky);">» [Frontend]</span>
+              <span>AST traversal: React 18 routers &amp; fetch endpoint calls...</span>
+              <span class="term-badge" style="background:rgba(56,189,248,0.2); color:var(--sky); border-color:rgba(56,189,248,0.4);">MATCHED</span>
+            </div>
+            <div class="term-line" id="tl-4">
+              <span class="keyword" style="color:var(--violet);">» [Azure]</span>
+              <span>Bicep ARM synthesis: Service Bus topics &amp; SQL servers...</span>
+              <span class="term-badge" style="background:rgba(139,92,246,0.2); color:var(--violet); border-color:rgba(139,92,246,0.4);">RESOLVED</span>
+            </div>
+            <div class="term-line" id="tl-5" style="margin-top:16px; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
+              <span class="highlight">✓ Graph compiled:</span>
+              <span style="color:var(--emerald); font-weight:700;">13 verified entities · 8 cross-stack relationships</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 3 & 4: Interactive Architecture Canvas (16.00 - 37.00s) -->
+      <section class="act" id="act3">
+        <div id="act3-canvas">
+          <div class="canvas-nav">
+            <div class="brand-mark">
+              <div class="brand-icon">V</div>
+              <span>vogoban</span>
+              <span style="color:var(--ink-faint); font-weight:400; font-size:18px; margin-left:8px;">/ sample-orders / Frontend</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:20px;">
+              <div style="background:rgba(255,255,255,0.05); padding:8px 18px; border-radius:8px; border:1px solid var(--border); font-family:'Fira Code'; font-size:14px;">
+                <span style="color:var(--ink-faint);">Search:</span> <span style="color:#fff;">OrdersController</span>
+              </div>
+              <div class="mono-tag" style="background:rgba(16,185,129,0.15); border-color:rgba(16,185,129,0.3); color:var(--emerald); font-size:14px;">
+                ● Architecture Verified
+              </div>
+            </div>
+          </div>
+
+          <div class="canvas-body">
+            <!-- Sidebar Projections -->
+            <div class="canvas-sidebar">
+              <div style="font-family:'Fira Code'; font-size:12px; text-transform:uppercase; color:var(--ink-faint); margin-bottom:4px;">EXPLORE PROJECTIONS</div>
+              <div class="side-item"><span>🏛️ Architecture</span></div>
+              <div class="side-item active"><span>🌐 Frontend Routes</span></div>
+              <div class="side-item"><span>☁️ Azure Topology</span></div>
+              <div class="side-item"><span>⚡ Messaging Hub</span></div>
+              <div class="side-item"><span>🔗 Full MetaGraph</span></div>
+            </div>
+
+            <!-- Viewport with Interactive Nodes and Edges -->
+            <div class="canvas-viewport" id="viewport">
+              <svg id="graph-svg">
+                <!-- Orthogonal connecting edges -->
+                <path id="wire-1" class="graph-wire" d="M 220 180 L 360 180 L 360 290 L 520 290" />
+                <path id="wire-2" class="graph-wire" d="M 220 440 L 360 440 L 360 330 L 520 330" />
+                <path id="wire-3" class="graph-wire" d="M 780 310 L 920 310" />
+                <path id="wire-4" class="graph-wire" d="M 780 470 L 920 470" />
+                <path id="wire-5" class="graph-wire" d="M 1180 310 L 1300 310 L 1300 420" />
+              </svg>
+
+              <!-- Node 1: React Route -->
+              <div class="graph-node" id="node-react" style="left:50px; top:130px; width:220px;">
+                <div class="node-header">
+                  <span class="node-type"><span class="dot" style="background:var(--sky);"></span>Frontend</span>
+                  <span style="font-size:12px; color:var(--ink-faint); font-family:'Fira Code';">react</span>
+                </div>
+                <div class="node-title">/orders/:id</div>
+                <div class="node-meta">Contoso.Web</div>
+              </div>
+
+              <!-- Node 2: Health Check Route -->
+              <div class="graph-node" id="node-health" style="left:50px; top:390px; width:220px;">
+                <div class="node-header">
+                  <span class="node-type"><span class="dot" style="background:var(--sky);"></span>Frontend</span>
+                  <span style="font-size:12px; color:var(--ink-faint); font-family:'Fira Code';">react</span>
+                </div>
+                <div class="node-title">/orders/new</div>
+                <div class="node-meta">Contoso.Web</div>
+              </div>
+
+              <!-- Node 3: REST API Contract -->
+              <div class="graph-node" id="node-endpoint" style="left:520px; top:250px; width:260px;">
+                <div class="node-header">
+                  <span class="node-type"><span class="dot" style="background:var(--emerald);"></span>Endpoint</span>
+                  <span style="font-size:12px; color:var(--emerald); font-family:'Fira Code';">C# Roslyn</span>
+                </div>
+                <div class="node-title">GET /api/orders/{id}</div>
+                <div class="node-meta">OrdersController.GetOrder()</div>
+              </div>
+
+              <!-- Node 4: Dotnet API Application -->
+              <div class="graph-node" id="node-api" style="left:920px; top:250px; width:260px;">
+                <div class="node-header">
+                  <span class="node-type"><span class="dot" style="background:var(--emerald);"></span>Application</span>
+                  <span style="font-size:12px; color:var(--emerald); font-family:'Fira Code';">.NET 8</span>
+                </div>
+                <div class="node-title">Contoso.Orders.Api</div>
+                <div class="node-meta">Kestrel Host · 4 Endpoints</div>
+              </div>
+
+              <!-- Node 5: Azure Service Bus Topic -->
+              <div class="graph-node" id="node-azure" style="left:1170px; top:420px; width:260px;">
+                <div class="node-header">
+                  <span class="node-type"><span class="dot" style="background:var(--violet);"></span>Azure Resource</span>
+                  <span style="font-size:12px; color:var(--violet); font-family:'Fira Code';">Bicep IaC</span>
+                </div>
+                <div class="node-title">order-events</div>
+                <div class="node-meta">ServiceBus/Topic</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Slide-out Entity Inspector -->
+          <div id="inspector-panel">
+            <div class="inspect-title">
+              <span>OrdersController.cs</span>
+              <span class="mono-tag" style="font-size:12px; padding:2px 8px;">TYPE DEF</span>
+            </div>
+            <div style="font-family:'Fira Code'; font-size:14px; color:var(--emerald); margin-top:6px;">Contoso.Orders.Api.Controllers</div>
+            <div class="inspect-list">
+              <div class="inspect-row"><span>Method: Create()</span><span style="color:var(--sky);">POST</span></div>
+              <div class="inspect-row"><span>Method: GetById()</span><span style="color:var(--sky);">GET</span></div>
+              <div class="inspect-row"><span>DbContext: OrderDb</span><span style="color:var(--violet);">SQL</span></div>
+              <div class="inspect-row"><span>Publisher: IEventBus</span><span style="color:var(--amber);">Bus</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 5: Local Sovereign Shield (37.00 - 46.50s) -->
+      <section class="act" id="act5">
+        <div id="act5-sovereign">
+          <div class="shield-emblem" id="shield-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+          </div>
+          <div class="mono-tag" style="background:rgba(16,185,129,0.15); color:var(--emerald); border-color:rgba(16,185,129,0.3);">LOCAL GRAPH · ZERO CLOUD LEAK</div>
+          <h2 class="display-title" style="font-size:74px; margin-top:16px;">Evidence from Source. Not AI.</h2>
+          <p class="display-sub" style="max-width:850px;">Every single link is validated against compiler semantics, AST trees, and IaC templates. Zero hallucinated connections.</p>
+          <div class="metrics-deck">
+            <div class="metric-card">
+              <div class="metric-num" id="counter-entities">0</div>
+              <div class="metric-lbl">Semantic Entities Mapped</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-num" id="counter-edges">0</div>
+              <div class="metric-lbl">Deterministic Cross-Stack Edges</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-num" style="color:var(--sky);">100%</div>
+              <div class="metric-lbl">Local Sovereignty (SQLite)</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 6: Multi-Stack Pillars (46.50 - 54.50s) -->
+      <section class="act" id="act6">
+        <div style="text-align:center; position:absolute; top:80px;">
+          <div class="mono-tag">CROSS-STACK COMPOSABILITY</div>
+          <h2 class="display-title" style="font-size:68px; margin-top:14px;">One Graph. The Entire Fleet.</h2>
+        </div>
+        <div id="act6-pillars" style="margin-top:100px;">
+          <div class="stack-pillar pillar-dotnet">
+            <div class="stack-glyph glyph-dotnet">C#</div>
+            <h3 style="font-size:26px; font-weight:700;">.NET &amp; Roslyn</h3>
+            <p style="font-size:16px; color:var(--ink-muted); margin-top:10px; line-height:1.5;">Deep semantic symbol extraction, Controllers, Minimal APIs, and MediatR handlers.</p>
+          </div>
+          <div class="stack-pillar pillar-ts">
+            <div class="stack-glyph glyph-ts">TS</div>
+            <h3 style="font-size:26px; font-weight:700;">TypeScript</h3>
+            <p style="font-size:16px; color:var(--ink-muted); margin-top:10px; line-height:1.5;">Frontend router discovery, API client mappings, and typed contract links.</p>
+          </div>
+          <div class="stack-pillar pillar-azure">
+            <div class="stack-glyph glyph-azure">AZ</div>
+            <h3 style="font-size:26px; font-weight:700;">Azure &amp; Bicep</h3>
+            <p style="font-size:16px; color:var(--ink-muted); margin-top:10px; line-height:1.5;">Functions, Service Bus queues, Cosmos/SQL DBs, and resource group graphs.</p>
+          </div>
+          <div class="stack-pillar pillar-sqlite">
+            <div class="stack-glyph glyph-sqlite">SQL</div>
+            <h3 style="font-size:26px; font-weight:700;">Local SQLite</h3>
+            <p style="font-size:16px; color:var(--ink-muted); margin-top:10px; line-height:1.5;">Instant queries, offline operation, zero telemetry, sovereign repository storage.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ACT 7: Brand Manifesto & Logo (54.50 - 60.00s) -->
+      <section class="act" id="act7">
+        <div id="act7-brand">
+          <div class="brand-hero-logo">
+            <div class="brand-hero-glyph">V</div>
+            <span class="brand-hero-text">vogoban</span>
+          </div>
+          <p class="display-title" style="font-size:62px; color:var(--sky); letter-spacing:-0.02em;">
+            See your architecture clearly.
+          </p>
+          <div style="margin-top:36px; display:flex; gap:16px; align-items:center;">
+            <div class="mono-tag" style="font-size:22px; padding:10px 24px; background:rgba(255,255,255,0.06); color:#fff; border-color:var(--border);">
+              $ bun src/cli/main.ts graph .
+            </div>
+          </div>
+          <p style="font-size:20px; color:var(--ink-faint); margin-top:28px;">
+            Open Source Architecture Intelligence · github.com/Smx27/vogoban
+          </p>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="leak" id="leak"></div>
+  <div class="vignette"></div>
+</div>
+
+<!-- Scrub Controls (only visible with ?debug=1) -->
+<div id="ui">
+  <button id="btn-play">Pause</button>
+  <button id="btn-restart">Restart</button>
+  <input id="scrub" type="range" min="0" max="1000" value="0">
+  <span id="clock">0.00s</span>
+</div>
+
+<script>
+/* ================= BANG MOTION CORE SCRIPT ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const defs = $('#filters defs');
+let fc = 0;
+
+function makeBlur() {
+  const id = 'mb' + (fc++), NS = 'http://www.w3.org/2000/svg';
+  const f = document.createElementNS(NS, 'filter'); f.id = id;
+  f.setAttribute('x', '-50%'); f.setAttribute('y', '-50%');
+  f.setAttribute('width', '200%'); f.setAttribute('height', '200%');
+  const g = document.createElementNS(NS, 'feGaussianBlur');
+  g.setAttribute('stdDeviation', '0 0');
+  f.appendChild(g); defs.appendChild(f);
+  return { url: `url(#${id})`, node: g };
+}
+
+function blurTween(tl, targets, at, from, to, dur, { ease = 'power3.out', ax = 1, ay = 0.1 } = {}) {
+  const b = makeBlur(), o = { v: from };
+  tl.set(targets, { filter: b.url }, at);
+  tl.to(o, {
+    v: to, duration: dur, ease,
+    onUpdate() {
+      b.node.setAttribute('stdDeviation', `${(o.v * ax).toFixed(2)} ${(o.v * ay).toFixed(2)}`);
+    }
+  }, at);
+  tl.set(targets, { filter: 'none' }, at + dur);
+}
+
+/* ================= TIMELINE DEFINITION (60 SECONDS) ================= */
+const DURATION = 60.0;
+const tl = gsap.timeline({ paused: true });
+const rig = $('#world');
+const leak = $('#leak');
+
+/* Responsive Scale */
+const stage = $('#stage');
+const fit = () => {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `translate(-50%,-50%) scale(${s})`;
+};
+window.addEventListener('resize', fit);
+fit();
+
+/* Light Leak Helper */
+let leakSide = 1;
+const lightLeak = (at, dur = 1.2) => {
+  const side = (leakSide *= -1);
+  tl.fromTo(leak, { x: side * 1400, y: -200, scale: 0.8 }, { x: side * 300, y: 100, scale: 1.2, duration: dur, ease: 'sine.out', immediateRender: false }, at);
+  tl.fromTo(leak, { opacity: 0 }, { opacity: 0.75, duration: dur * 0.4, ease: 'sine.in', immediateRender: false }, at);
+  tl.to(leak, { opacity: 0, duration: dur * 0.6, ease: 'sine.out' }, at + dur * 0.4);
+};
+
+/* Camera breathe foundation */
+const breathe = (from, to, { z0 = 1, z1 = 1.04, origin = '50% 50%' } = {}) => {
+  tl.set(rig, { transformOrigin: origin }, from);
+  tl.fromTo(rig, { scale: z0 }, { scale: z1, duration: to - from, ease: 'sine.inOut', immediateRender: false }, from);
+};
+
+/* Initial States */
+tl.set(['#act1', '#act2', '#act3', '#act5', '#act6', '#act7'], { autoAlpha: 0 });
+tl.set('.swarm-node', { autoAlpha: 0, scale: 0.8 });
+breathe(0, DURATION);
+
+/* -------------------------------------------------------------
+   ACT 1: THE BLACK BOX MONOLITH (0.00s - 07.50s)
+   ------------------------------------------------------------- */
+tl.set('#act1', { autoAlpha: 1 }, 0);
+tl.fromTo('#act1-tag', { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' }, 0.4);
+tl.fromTo('#act1-title', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 1.0, ease: 'power4.out' }, 0.6);
+blurTween(tl, '#act1-title', 0.6, 25, 0, 1.0);
+tl.fromTo('#act1-sub', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' }, 1.0);
+
+// Swarm items populating as a tangled cloud
+const swarmItems = $$('.swarm-node');
+swarmItems.forEach((item, idx) => {
+  const at = 0.8 + idx * 0.12;
+  tl.fromTo(item,
+    { autoAlpha: 0, scale: 0.4, x: (idx % 2 === 0 ? -40 : 40), y: 30 },
+    { autoAlpha: 1, scale: 1, x: 0, y: 0, duration: 0.9, ease: 'back.out(1.4)' },
+    at
+  );
+  // Drift through time deterministically
+  tl.to(item, {
+    x: Math.sin(idx * 1.5) * 45,
+    y: Math.cos(idx * 1.2) * 35,
+    duration: 5.5,
+    ease: 'sine.inOut'
+  }, at + 0.9);
+});
+
+// Camera push before transition
+tl.to(rig, { scale: 1.15, duration: 1.2, ease: 'power2.in' }, 6.3);
+tl.to('#act1', { autoAlpha: 0, scale: 0.9, duration: 0.6, ease: 'power2.in' }, 6.9);
+lightLeak(6.8, 1.2);
+
+/* -------------------------------------------------------------
+   ACT 2: ROSLYN PARSER TERMINAL (07.50s - 16.00s)
+   ------------------------------------------------------------- */
+tl.set('#act2', { autoAlpha: 1 }, 7.5);
+tl.fromTo('#act2-terminal',
+  { scale: 0.85, opacity: 0, rotateX: 10 },
+  { scale: 1, opacity: 1, rotateX: 0, duration: 0.9, ease: 'power3.out' },
+  7.5
+);
+
+// Typewriter terminal command
+const lines = ['#tl-1', '#tl-2', '#tl-3', '#tl-4', '#tl-5'];
+lines.forEach((line, i) => {
+  const at = 8.5 + i * 1.3;
+  tl.to(line, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, at);
+  if (i > 0) {
+    tl.fromTo(`${line} .term-badge`,
+      { scale: 0.5, opacity: 0 },
+      { scale: 1, opacity: 1, duration: 0.35, ease: 'back.out(2)' },
+      at + 0.25
+    );
+  }
+});
+
+tl.to('#act2-terminal', { scale: 1.08, rotateY: -4, duration: 1.6, ease: 'power2.in' }, 14.4);
+tl.to('#act2', { autoAlpha: 0, duration: 0.6, ease: 'power2.in' }, 15.4);
+lightLeak(15.3, 1.2);
+
+/* -------------------------------------------------------------
+   ACT 3 & 4: THE ARCHITECTURE GRAPH CANVAS (16.00s - 37.00s)
+   ------------------------------------------------------------- */
+tl.set('#act3', { autoAlpha: 1 }, 16.0);
+tl.fromTo('#act3-canvas',
+  { scale: 0.9, opacity: 0 },
+  { scale: 1, opacity: 1, duration: 1.0, ease: 'power3.out' },
+  16.0
+);
+
+// Stagger nodes entrance
+const nodes = ['#node-react', '#node-health', '#node-endpoint', '#node-api', '#node-azure'];
+nodes.forEach((n, idx) => {
+  tl.fromTo(n,
+    { opacity: 0, scale: 0.6, y: 40 },
+    { opacity: 1, scale: 1, y: 0, duration: 0.8, ease: 'back.out(1.5)' },
+    17.0 + idx * 0.25
+  );
+});
+
+// Wires connect and light up
+tl.fromTo('#wire-1', { strokeDashoffset: 400 }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.out' }, 18.5);
+tl.fromTo('#wire-2', { strokeDashoffset: 400 }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.out' }, 18.8);
+tl.fromTo('#wire-3', { strokeDashoffset: 400 }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.out' }, 19.4);
+tl.fromTo('#wire-4', { strokeDashoffset: 400 }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.out' }, 19.8);
+tl.fromTo('#wire-5', { strokeDashoffset: 400 }, { strokeDashoffset: 0, duration: 1.2, ease: 'power2.out' }, 20.2);
+
+// ACT 4 SIGNATURE MOMENT: Active Trace & Inspector Focus (26.00s)
+tl.to(rig, { scale: 1.22, x: -120, y: -40, duration: 1.8, ease: 'power3.inOut' }, 25.5);
+
+// Highlight Route to Endpoint wire
+tl.to('#node-react', { attr: { class: 'graph-node active-focus' }, duration: 0.5 }, 26.5);
+tl.to('#wire-1', { attr: { class: 'wire-active' }, duration: 0.5 }, 27.0);
+tl.to('#node-endpoint', { attr: { class: 'graph-node active-focus' }, duration: 0.5 }, 27.5);
+tl.to('#wire-3', { attr: { class: 'wire-emerald' }, duration: 0.5 }, 28.0);
+tl.to('#node-api', { attr: { class: 'graph-node active-focus' }, duration: 0.5 }, 28.5);
+tl.to('#wire-5', { attr: { class: 'wire-violet' }, duration: 0.5 }, 29.2);
+tl.to('#node-azure', { attr: { class: 'graph-node active-focus' }, duration: 0.5 }, 29.8);
+
+// Inspector slides out
+tl.to('#inspector-panel', { x: 0, opacity: 1, duration: 0.9, ease: 'back.out(1.2)' }, 30.5);
+
+// Camera resets back to center before Act 5
+tl.to(rig, { scale: 1.0, x: 0, y: 0, duration: 1.6, ease: 'power3.inOut' }, 34.5);
+tl.to('#act3', { autoAlpha: 0, scale: 0.9, duration: 0.8, ease: 'power2.in' }, 36.2);
+lightLeak(36.1, 1.2);
+
+/* -------------------------------------------------------------
+   ACT 5: LOCAL SOVEREIGN SHIELD (37.00s - 46.50s)
+   ------------------------------------------------------------- */
+tl.set('#act5', { autoAlpha: 1 }, 37.0);
+tl.fromTo('#shield-icon',
+  { scale: 0.3, rotate: -30, opacity: 0 },
+  { scale: 1, rotate: 0, opacity: 1, duration: 1.0, ease: 'back.out(1.8)' },
+  37.2
+);
+tl.fromTo('#act5 h2', { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power4.out' }, 37.8);
+blurTween(tl, '#act5 h2', 37.8, 30, 0, 0.8);
+tl.fromTo('#act5 p', { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' }, 38.3);
+
+// Metric counters counting up deterministically
+const countObj = { entities: 0, edges: 0 };
+tl.fromTo('.metric-card',
+  { opacity: 0, y: 40, scale: 0.9 },
+  { opacity: 1, y: 0, scale: 1, duration: 0.7, stagger: 0.18, ease: 'back.out(1.4)' },
+  39.0
+);
+
+tl.to(countObj, {
+  entities: 13,
+  edges: 744,
+  duration: 3.5,
+  ease: 'power2.out',
+  onUpdate() {
+    $('#counter-entities').textContent = Math.round(countObj.entities);
+    $('#counter-edges').textContent = Math.round(countObj.edges);
+  }
+}, 39.5);
+
+tl.to('#act5', { autoAlpha: 0, scale: 1.08, duration: 0.8, ease: 'power2.in' }, 45.7);
+lightLeak(45.6, 1.2);
+
+/* -------------------------------------------------------------
+   ACT 6: MULTI-STACK PILLARS (46.50s - 54.50s)
+   ------------------------------------------------------------- */
+tl.set('#act6', { autoAlpha: 1 }, 46.5);
+tl.fromTo('#act6 h2', { opacity: 0, y: -25 }, { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' }, 46.7);
+
+const pillars = $$('.stack-pillar');
+tl.fromTo(pillars,
+  { opacity: 0, y: 70, rotateY: 25 },
+  { opacity: 1, y: 0, rotateY: 0, duration: 0.9, stagger: 0.16, ease: 'power3.out' },
+  47.2
+);
+
+// Micro-tilt on hover/time
+tl.to(pillars, {
+  y: -15, duration: 2.2, ease: 'sine.inOut', yoyo: true, repeat: 1, stagger: 0.12
+}, 48.5);
+
+tl.to('#act6', { autoAlpha: 0, scale: 0.92, duration: 0.8, ease: 'power2.in' }, 53.7);
+lightLeak(53.6, 1.2);
+
+/* -------------------------------------------------------------
+   ACT 7: BRAND MANIFESTO & FINALE (54.50s - 60.00s)
+   ------------------------------------------------------------- */
+tl.set('#act7', { autoAlpha: 1 }, 54.5);
+tl.fromTo('.brand-hero-glyph',
+  { scale: 0.4, rotate: -45, opacity: 0 },
+  { scale: 1, rotate: 0, opacity: 1, duration: 1.0, ease: 'back.out(2)' },
+  54.7
+);
+tl.fromTo('.brand-hero-text',
+  { opacity: 0, x: 40 },
+  { opacity: 1, x: 0, duration: 0.8, ease: 'power4.out' },
+  55.2
+);
+blurTween(tl, '.brand-hero-text', 55.2, 40, 0, 0.8);
+
+tl.fromTo('#act7 .display-title',
+  { opacity: 0, y: 25 },
+  { opacity: 1, y: 0, duration: 0.8, ease: 'power3.out' },
+  55.8
+);
+
+tl.fromTo('#act7 .mono-tag',
+  { opacity: 0, scale: 0.85 },
+  { opacity: 1, scale: 1, duration: 0.6, ease: 'back.out(1.5)' },
+  56.5
+);
+
+// Loop turnaround at t=60s
+tl.to('#act7', { opacity: 0.95, duration: 2.5 }, 57.5);
+tl.to({}, { duration: 0.01 }, DURATION);
+
+/* ================= PLAYBACK & SCRUB ENGINE ================= */
+const clock = $('#clock'), scrub = $('#scrub'), btn = $('#btn-play');
+let scrubbing = false;
+
+function frameLoop() {
+  const t = tl.time();
+  clock.textContent = t.toFixed(2) + 's';
+  if (!scrubbing) scrub.value = String((t / DURATION) * 1000);
+  requestAnimationFrame(frameLoop);
+}
+requestAnimationFrame(frameLoop);
+
+const togglePlay = () => {
+  if (tl.paused() || tl.progress() >= 1) {
+    if (tl.progress() >= 1) tl.progress(0);
+    tl.play();
+    btn.textContent = 'Pause';
+  } else {
+    tl.pause();
+    btn.textContent = 'Play';
+  }
+};
+btn.onclick = togglePlay;
+
+$('#btn-restart').onclick = () => {
+  tl.pause(0);
+  tl.play();
+  btn.textContent = 'Pause';
+};
+
+scrub.addEventListener('pointerdown', () => { scrubbing = true; tl.pause(); btn.textContent = 'Play'; });
+window.addEventListener('pointerup', () => { scrubbing = false; });
+scrub.addEventListener('input', () => { tl.pause(); tl.time((scrub.value / 1000) * DURATION); });
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+  if (e.key === 'r' || e.key === 'R') { tl.pause(0); tl.play(); }
+  if (e.key === 'h' || e.key === 'H') { $('#ui').classList.toggle('on'); }
+});
+
+const Q = new URLSearchParams(location.search);
+if (Q.has('debug')) $('#ui').classList.add('on');
+tl.eventCallback('onComplete', () => { tl.play(0); });
+
+/* Synchronous frame seeking for automated verification */
+const seek = (t) => {
+  tl.pause();
+  tl.time(t, false);
+  if (gsap.ticker.tick) gsap.ticker.tick();
+};
+window.SHOWCASE = { tl, DURATION, seek, ready: true };
+
+document.fonts.ready.then(() => {
+  if (!Q.has('clean')) tl.play(0);
+});
+</script>
+</body>
+</html>
