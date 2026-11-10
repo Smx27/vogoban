@@ -95,3 +95,20 @@ test("hooks install --db bakes the absolute store path into the hook (C-08)", ()
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("CLI commands execute cleanly from external directory without ambient pollution", () => {
+  const dir = mkdtempSync(join(tmpdir(), "vogoban-external-run-"));
+  try {
+    const r = Bun.spawnSync(["bun", CLI, "--version"], { cwd: dir, stdout: "pipe", stderr: "pipe", env: { ...process.env, VOGOBAN_DEBUG: "0" } });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout.toString().trim()).toMatch(/^\d+\.\d+\.\d+/);
+    expectNoStackTrace(r.stderr.toString());
+
+    const rHelp = Bun.spawnSync(["bun", CLI, "--help"], { cwd: dir, stdout: "pipe", stderr: "pipe", env: { ...process.env, VOGOBAN_DEBUG: "0" } });
+    expect(rHelp.exitCode).toBe(0);
+    expect(rHelp.stdout.toString()).toContain("vogoban - .NET-first enterprise code and architecture graph");
+    expectNoStackTrace(rHelp.stderr.toString());
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
