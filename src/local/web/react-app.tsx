@@ -524,13 +524,13 @@ function App() {
     },
     [view],
   );
-  const explore = async (id = selectedId, replace = false) => {
+  const explore = async (id = selectedId, replace = false, depth = 1) => {
     if (!id || !graph) return;
-    setBusy("Exploring neighborhood");
+    setBusy(`Exploring ${depth}-hop neighborhood`);
     setError(null);
     try {
       const neighborhood = await api<Subgraph>(
-        `/api/entity/${encodeURIComponent(id)}/neighborhood?depth=1&meta=${view === "meta" ? "1" : "0"}`,
+        `/api/entity/${encodeURIComponent(id)}/neighborhood?depth=${depth}&meta=${view === "meta" ? "1" : "0"}`,
       );
       const entities = [
         ...new Map(
@@ -607,15 +607,17 @@ function App() {
   const searchSelect = (entity: Entity) => {
     setShowSearch(false);
     void selectEntity(entity.id);
-    if (!visibleEntities.some((item) => item.id === entity.id))
-      void explore(entity.id, true);
-    else
+    if (!visibleEntities.some((item) => item.id === entity.id)) {
+      void explore(entity.id, true, 1);
+    } else {
+      void explore(entity.id, false, 1);
       void flow?.fitView({
         nodes: [{ id: entity.id }],
         maxZoom: 1,
         duration: duration(),
         padding: 0.8,
       });
+    }
   };
   const repositoryName = status?.repository?.name ?? "Repository graph";
   const total = graph?.entities.length ?? 0;
@@ -1145,8 +1147,8 @@ function App() {
               leaders={leaders}
               degree={degree}
               selectEntity={selectEntity}
-              expand={() => void explore()}
-              focus={() => void explore(selectedId, true)}
+              expand={(depth = 1) => void explore(selectedId, false, depth)}
+              focus={() => void explore(selectedId, true, 1)}
               impact={impact}
               traceImpact={() => void traceImpact()}
               close={() => setInspector(false)}
@@ -1193,7 +1195,7 @@ function Inspector({
   leaders: Entity[];
   degree: Map<string, number>;
   selectEntity: (id: string) => Promise<void>;
-  expand: () => void;
+  expand: (depth?: number) => void;
   focus: () => void;
   impact: ImpactResult | null;
   traceImpact: () => void;
@@ -1288,10 +1290,20 @@ function Inspector({
               <button
                 className="button secondary"
                 disabled={busy}
-                onClick={expand}
+                onClick={() => expand(1)}
+                title="Expand 1-hop neighborhood"
               >
                 <Expand size={14} />
-                Expand
+                +1 Hop
+              </button>
+              <button
+                className="button secondary"
+                disabled={busy}
+                onClick={() => expand(2)}
+                title="Expand 2-hop neighborhood"
+              >
+                <Expand size={14} />
+                +2 Hops
               </button>
             </div>
             <div className="inspector-tabs" aria-label="Entity detail sections">
