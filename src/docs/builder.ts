@@ -243,6 +243,9 @@ function renderTreeToHtml(node: TreeNode, currentUrl: string, depth = 0): string
   }
 }
 
+
+export const CLIENT_DOCS_SCRIPT: string = "// Folder tree expand / collapse\n    document.querySelectorAll('.tree-folder-header').forEach((btn) => {\n      btn.addEventListener('click', () => {\n        const folder = btn.closest('.tree-folder');\n        if (folder) {\n          const isOpen = folder.classList.toggle('open');\n          btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');\n        }\n      });\n    });\n\n    // Mobile sidebar drawer toggle\n    const sidebar = document.getElementById('sidebar');\n    const overlay = document.getElementById('sidebar-overlay');\n    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');\n\n    function openMobileSidebar() {\n      if (sidebar && overlay) {\n        sidebar.classList.add('open');\n        overlay.classList.add('open');\n      }\n    }\n\n    function closeMobileSidebar() {\n      if (sidebar && overlay) {\n        sidebar.classList.remove('open');\n        overlay.classList.remove('open');\n      }\n    }\n\n    if (mobileMenuToggle) {\n      mobileMenuToggle.addEventListener('click', openMobileSidebar);\n    }\n    if (overlay) {\n      overlay.addEventListener('click', closeMobileSidebar);\n    }\n\n    // Scroll to top functionality\n    const contentArea = document.querySelector('.content-area');\n    const scrollTopBtn = document.getElementById('scroll-top-btn');\n\n    if (contentArea && scrollTopBtn) {\n      contentArea.addEventListener('scroll', () => {\n        if (contentArea.scrollTop > 240) {\n          scrollTopBtn.classList.add('visible');\n        } else {\n          scrollTopBtn.classList.remove('visible');\n        }\n      });\n\n      scrollTopBtn.addEventListener('click', () => {\n        contentArea.scrollTo({\n          top: 0,\n          behavior: 'smooth',\n        });\n      });\n    }\n\n    let searchIndex = [];\n    try {\n      const searchDataEl = document.getElementById(\"vogoban-docs-search-data\");\n      if (searchDataEl && searchDataEl.textContent) {\n        searchIndex = JSON.parse(searchDataEl.textContent);\n      }\n    } catch (e) {\n      searchIndex = [];\n    }\n    const modal = document.getElementById('search-modal');\n    const searchTrigger = document.getElementById('search-trigger');\n    const searchInput = document.getElementById('search-dialog-input');\n    const searchResults = document.getElementById('search-results');\n\n    function openSearch() {\n      modal.classList.add('open');\n      searchInput.focus();\n      renderResults(searchInput.value);\n    }\n\n    function closeSearch() {\n      modal.classList.remove('open');\n      searchInput.value = '';\n    }\n\n    searchTrigger.addEventListener('click', openSearch);\n    window.addEventListener('keydown', (e) => {\n      if (e.key === '/' && document.activeElement !== searchInput) {\n        e.preventDefault();\n        openSearch();\n      } else if (e.key === 'Escape' && modal.classList.contains('open')) {\n        closeSearch();\n      }\n    });\n\n    modal.addEventListener('click', (e) => {\n      if (e.target === modal) closeSearch();\n    });\n\n    searchInput.addEventListener('input', () => {\n      renderResults(searchInput.value.trim());\n    });\n\n    function renderResults(query) {\n      if (!query) {\n        searchResults.innerHTML = '<div style=\"padding: 14px; text-align: center; color: var(--subtle); font-size: 12px;\">Type to search documentation...</div>';\n        return;\n      }\n      const q = query.toLowerCase();\n      const matches = searchIndex\n        .filter(item => item.title.toLowerCase().includes(q) || item.content.toLowerCase().includes(q))\n        .slice(0, 10);\n\n      if (matches.length === 0) {\n        searchResults.innerHTML = '<div style=\"padding: 14px; text-align: center; color: var(--subtle); font-size: 12px;\">No documentation matches found</div>';\n        return;\n      }\n\n      searchResults.innerHTML = matches.map(item => {\n        const snippetIdx = item.content.toLowerCase().indexOf(q);\n        let snippet = \"\";\n        if (snippetIdx !== -1) {\n          const start = Math.max(0, snippetIdx - 40);\n          const end = Math.min(item.content.length, snippetIdx + 80);\n          snippet = (start > 0 ? \"...\" : \"\") + item.content.slice(start, end) + (end < item.content.length ? \"...\" : \"\");\n        } else {\n          snippet = item.content.slice(0, 90) + \"...\";\n        }\n        return \\`\n          <a href=\"\\${item.url}\" class=\"search-result-item\">\n            <div class=\"search-result-item-title\">\\${item.title} <span style=\"font-size: 10px; color: var(--subtle); font-weight: normal; margin-left: 6px;\">\\${item.section}</span></div>\n            <div class=\"search-result-item-snippet\">\\${snippet}</div>\n          </a>\n        \\`;\n      }).join('');\n    }";
+
 export function buildDocumentation(options: { baseHref?: string; outDir?: string } = {}) {
   const baseHref = options.baseHref ?? "/vogoban/";
   const rootDir = process.cwd();
@@ -256,6 +259,9 @@ export function buildDocumentation(options: { baseHref?: string; outDir?: string
   if (!existsSync(outDir)) {
     mkdirSync(outDir, { recursive: true });
   }
+
+  // Write external client script asset for CSP compliance (disallows inline script execution)
+  writeFileSync(join(outDir, "docs.js"), CLIENT_DOCS_SCRIPT, "utf-8");
 
   // Copy docs/images to outDir/images if exists
   const docsImagesDir = join(docsDir, "images");
@@ -1245,134 +1251,9 @@ function generateDocPageHtml(data: {
     </div>
   </div>
 
-  <script>
-    // Folder tree expand / collapse
-    document.querySelectorAll('.tree-folder-header').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const folder = btn.closest('.tree-folder');
-        if (folder) {
-          const isOpen = folder.classList.toggle('open');
-          btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-        }
-      });
-    });
-
-    // Mobile sidebar drawer toggle
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
-
-    function openMobileSidebar() {
-      if (sidebar && overlay) {
-        sidebar.classList.add('open');
-        overlay.classList.add('open');
-      }
-    }
-
-    function closeMobileSidebar() {
-      if (sidebar && overlay) {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('open');
-      }
-    }
-
-    if (mobileMenuToggle) {
-      mobileMenuToggle.addEventListener('click', openMobileSidebar);
-    }
-    if (overlay) {
-      overlay.addEventListener('click', closeMobileSidebar);
-    }
-
-    // Scroll to top functionality
-    const contentArea = document.querySelector('.content-area');
-    const scrollTopBtn = document.getElementById('scroll-top-btn');
-
-    if (contentArea && scrollTopBtn) {
-      contentArea.addEventListener('scroll', () => {
-        if (contentArea.scrollTop > 240) {
-          scrollTopBtn.classList.add('visible');
-        } else {
-          scrollTopBtn.classList.remove('visible');
-        }
-      });
-
-      scrollTopBtn.addEventListener('click', () => {
-        contentArea.scrollTo({
-          top: 0,
-          behavior: 'smooth',
-        });
-      });
-    }
-
-    const searchIndex = ${data.searchIndexJson};
-    const modal = document.getElementById('search-modal');
-    const searchTrigger = document.getElementById('search-trigger');
-    const searchInput = document.getElementById('search-dialog-input');
-    const searchResults = document.getElementById('search-results');
-
-    function openSearch() {
-      modal.classList.add('open');
-      searchInput.focus();
-      renderResults(searchInput.value);
-    }
-
-    function closeSearch() {
-      modal.classList.remove('open');
-      searchInput.value = '';
-    }
-
-    searchTrigger.addEventListener('click', openSearch);
-    window.addEventListener('keydown', (e) => {
-      if (e.key === '/' && document.activeElement !== searchInput) {
-        e.preventDefault();
-        openSearch();
-      } else if (e.key === 'Escape' && modal.classList.contains('open')) {
-        closeSearch();
-      }
-    });
-
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeSearch();
-    });
-
-    searchInput.addEventListener('input', () => {
-      renderResults(searchInput.value.trim());
-    });
-
-    function renderResults(query) {
-      if (!query) {
-        searchResults.innerHTML = '<div style="padding: 14px; text-align: center; color: var(--subtle); font-size: 12px;">Type to search documentation...</div>';
-        return;
-      }
-      const q = query.toLowerCase();
-      const matches = searchIndex
-        .filter(item => item.title.toLowerCase().includes(q) || item.content.toLowerCase().includes(q))
-        .slice(0, 10);
-
-      if (matches.length === 0) {
-        searchResults.innerHTML = '<div style="padding: 14px; text-align: center; color: var(--subtle); font-size: 12px;">No documentation matches found</div>';
-        return;
-      }
-
-      searchResults.innerHTML = matches.map(item => {
-        const snippetIdx = item.content.toLowerCase().indexOf(q);
-        let snippet = "";
-        if (snippetIdx !== -1) {
-          const start = Math.max(0, snippetIdx - 40);
-          const end = Math.min(item.content.length, snippetIdx + 80);
-          snippet = (start > 0 ? "..." : "") + item.content.slice(start, end) + (end < item.content.length ? "..." : "");
-        } else {
-          snippet = item.content.slice(0, 90) + "...";
-        }
-        return \`
-          <a href="\${item.url}" class="search-result-item">
-            <div class="search-result-item-title">\${item.title} <span style="font-size: 10px; color: var(--subtle); font-weight: normal; margin-left: 6px;">\${item.section}</span></div>
-            <div class="search-result-item-snippet">\${snippet}</div>
-          </a>
-        \`;
-      }).join('');
-    }
-  </script>
+  <!-- Search index data embedded as non-executable JSON -->
+  <script type="application/json" id="vogoban-docs-search-data" data-name="searchIndex">${data.searchIndexJson}</script>
+  <script src="${data.baseHref}docs.js" defer></script>
 </body>
 </html>
 `;

@@ -13,11 +13,14 @@ describe("documentation builder", () => {
     expect(existsSync(join(testOutDir, "index.html"))).toBe(true);
     expect(existsSync(join(testOutDir, "concepts.html"))).toBe(true);
     expect(existsSync(join(testOutDir, "cli/overview.html"))).toBe(true);
+    expect(existsSync(join(testOutDir, "docs.js"))).toBe(true);
 
     const indexHtml = readFileSync(join(testOutDir, "index.html"), "utf-8");
     expect(indexHtml).toContain("Vogoban");
     expect(indexHtml).toContain("searchIndex");
     expect(indexHtml).toContain("sidebar-section");
+    expect(indexHtml).toContain('<script src="/vogoban/docs.js" defer></script>');
+    expect(indexHtml).not.toContain("<script>\\n    // Folder tree");
 
     rmSync(testOutDir, { recursive: true, force: true });
   });
