@@ -5,7 +5,7 @@ This audit maps every user-facing capability of Vogoban 0.18.0 to the pages that
 ## How the documentation was verified
 
 - **Commands.** Every `vogoban …` line in a code block is checked mechanically against the real command `case` labels and `parseArgs` options of the CLI (command name, subcommand and every flag). The same check fails any development invocation (running the CLI or the Roslyn analyzer from source) outside [development](advanced/development.md) and [contributing](advanced/contributing.md), and verifies every relative link and `#anchor`.
-- **Output.** Output shown in the documentation comes from real runs of the installed CLI (installed with `bun install -g ./vogoban-0.18.0-src.tar.gz`) against the bundled sample repositories (`test/azure/fixtures/contoso-*`, with `dotnet restore`), the test fixtures, and small purpose-built repositories. Output is trimmed with `…`; ids, commits and timings differ per machine.
+- **Output.** Output shown in the documentation comes from real runs of the installed CLI (installed with Bun (`bun install -g vogoban@beta` or a packed local tarball)) against the bundled sample repositories (`test/azure/fixtures/contoso-*`, with `dotnet restore`), the test fixtures, and small purpose-built repositories. Output is trimmed with `…`; ids, commits and timings differ per machine.
 - **Installation.** The global Bun install and the container image (`docker build`, `docker run … analyze`) were both executed.
 
 ## Capability map

@@ -7,7 +7,7 @@ Every output below comes from a real run of Vogoban 0.18.0. Ids, commit hashes a
 ## 0. Install and verify
 
 ```bash
-bun install -g ./vogoban-0.18.0-src.tar.gz
+bun install -g vogoban@beta
 export PATH="$HOME/.bun/bin:$PATH"
 vogoban --version
 ```

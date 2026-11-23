@@ -21,7 +21,7 @@ Vogoban is static analysis: it reads files. It never runs your code, never deplo
 Follow [Installation](installation.md). In short:
 
 ```bash
-bun install -g ./vogoban-0.18.0-src.tar.gz
+bun install -g vogoban@beta
 export PATH="$HOME/.bun/bin:$PATH"
 vogoban --version
 ```

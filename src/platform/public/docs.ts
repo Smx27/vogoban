@@ -39,7 +39,7 @@ const GROUPS: ReadonlyArray<{ title: string; paths: readonly string[] }> = [
   { title: "Advanced", paths: ["advanced/ci.md", "advanced/enterprise.md", "advanced/trust-modes.md", "advanced/backup-restore.md", "advanced/troubleshooting.md", "advanced/repository-analysis.md", "advanced/privacy.md", "advanced/runbook.md"] },
   { title: "Architecture", paths: ["architecture/overview.md", "architecture/repository-graph.md", "architecture/metagraph.md", "architecture/analysis-pipeline.md", "architecture/identity.md", "architecture/evidence-provenance.md", "architecture/incremental-engine.md", "architecture/analyzers.md", "architecture/azure-engine.md", "architecture/frontend-engine.md", "architecture/security-model.md", "architecture/platform.md", "architecture/ai-mcp.md", "architecture/repository-structure.md"] },
   { title: "Development", paths: ["advanced/development.md", "advanced/contributing.md"] },
-  { title: "Reference", paths: ["coverage.md", "release/README.md", "release/release-readiness.md", "release/release-gate-phase15.md", "release/release-gate-phase18.md"] },
+  { title: "Reference", paths: ["coverage.md", "release/README.md", "release/release-gate-phase18.md"] },
 ];
 
 const titleOf = (content: string, fallback: string) => content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? fallback;

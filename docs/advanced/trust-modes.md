@@ -106,7 +106,7 @@ What changed:
 - `PACKAGE_DEPENDS_ON` relationships were downgraded from evidence `EXACT` to `DECLARED`.
 - Each `Project` entity's `projectEvaluation` changed from `msbuild` to `static`.
 
-No service, API, message or code entity outside the AppHost changed in this repository. The loss depends on how much a repository relies on SDK logic, `Directory.Build.*` files, conditional items and generated sources. The Phase 15 release gate measured 6,658 entities for jailed analysis of dotnet/eShop without network for restore, against 7,298 for trusted local analysis ([report](../release/release-gate-phase15.md)).
+No service, API, message or code entity outside the AppHost changed in this repository. The loss depends on how much a repository relies on SDK logic, `Directory.Build.*` files, conditional items and generated sources. The Phase 15 release gate measured 6,658 entities for jailed analysis of dotnet/eShop without network for restore, against 7,298 for trusted local analysis.
 
 ## Platform worker modes
 

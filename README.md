@@ -79,11 +79,13 @@ vogoban graph .
 - Linux x86_64, container, or WSL2
 
 ```bash
-# Install globally from source package
-bun install -g ./vogoban-0.18.0-src.tar.gz
+# Install the beta from npm (requires Bun)
+bun install -g vogoban@beta
 export PATH="$HOME/.bun/bin:$PATH"
 vogoban --version
 ```
+
+To install from a local source checkout instead, use `bun install -g .` from the repository root.
 
 ### 2. Analyze a Repository
 

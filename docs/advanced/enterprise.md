@@ -289,7 +289,7 @@ Errors are structured: `{ "error": { "code", "message", "correlationId", "detail
 
 ## Limitations
 
-- Performance was measured at moderate scale (one tenant, two repositories, about 16k entities). Capacity for large fleets was not load-tested; see the [release readiness report](../release/release-readiness.md).
+- Performance was measured at moderate scale (one tenant, two repositories, about 16k entities). Capacity for large fleets was not load-tested.
 - Kubernetes deployment and `pg_upgrade` were not validated.
 - Jailed analysis has no network; package restore must happen before it.
 - Windows hosts are not supported.

@@ -204,7 +204,7 @@ The repository name is `repo` because the scratch checkout directory was called 
 
 ## GitHub Actions example
 
-This workflow wraps the script above. It was not executed on GitHub; the script it calls was. Vogoban is not published to the npm registry, so the job installs the source package from a location your organization controls (here a repository variable `VOGOBAN_PACKAGE_URL`); see [Installation](../installation.md).
+This workflow wraps the script above. It was not executed on GitHub; the script it calls was. During beta, install Vogoban from npm with the `beta` dist-tag. If you need a pinned internal artifact, you can also install a vetted source package URL; see [Installation](../installation.md).
 
 ```yaml
 name: architecture

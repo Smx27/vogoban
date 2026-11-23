@@ -1,0 +1,28 @@
+# Development and local artifacts
+.commandcode/
+.github/
+.jules/
+.vogoban/
+.vogoban-platform/
+dist/
+deploy/
+docs/
+example/
+test/
+node_modules/
+
+# Build outputs / compiled analyzer
+semantic/Vogoban.Roslyn/bin/
+semantic/Vogoban.Roslyn/obj/
+semantic/**/bin/
+semantic/**/obj/
+**/*.db
+**/*.db-*
+**/*.tgz
+
+# Environment and local config
+.env
+.env.*
+*.log
+.DS_Store
+coverage/

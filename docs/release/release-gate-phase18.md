@@ -69,7 +69,7 @@ Found and fixed during this phase, outside the 0.17.0 list: SSRF `isPrivateAddre
 
 ## Release hygiene
 
-`package.json` 0.18.0; `deploy/docker-compose.yml` image `vogoban:0.18.0`; `docs/runbook.md` names 0.18.0; `docs/release-readiness.md` is marked historical (Phase 12) and points here; `docs/release-gate-phase15.md` is a historical record and keeps its 0.15 numbers. `docs/azure.md`, `docs/frontend.md`, `docs/privacy.md`, `docs/incremental-sync.md`, `docs/platform.md`, `docs/runbook.md` describe the behaviour proven above and name every accepted limitation. `bunfig.toml` sets a 180 s test timeout for the .NET-backed suites; `test/azure/iac/{bicep,arm}.test.ts` corpus globs are skipped when the corpus directory is absent.
+`package.json` 0.18.0; `deploy/docker-compose.yml` image `vogoban:0.18.0`; `docs/runbook.md` names 0.18.0. `docs/azure.md`, `docs/frontend.md`, `docs/privacy.md`, `docs/incremental-sync.md`, `docs/platform.md`, `docs/runbook.md` describe the behaviour proven above and name every accepted limitation. `bunfig.toml` sets a 180 s test timeout for the .NET-backed suites; `test/azure/iac/{bicep,arm}.test.ts` corpus globs are skipped when the corpus directory is absent.
 
 ## Commits on the 0.17.0 baseline
 

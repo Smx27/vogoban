@@ -213,7 +213,7 @@ Incremental sync and the fact caches are what keep large repositories practical.
 
 | Scenario | Result | Source |
 |---|---|---|
-| dotnet/eShop full analysis (683 files, 28 projects, 7,298 entities, 26,210 relationships) | 18.3 s, 500 MB RSS, 76 MB store | [Phase 15 release gate](../release/release-gate-phase15.md) |
+| dotnet/eShop full analysis (683 files, 28 projects, 7,298 entities, 26,210 relationships) | 18.3 s, 500 MB RSS, 76 MB store | measured on the release audit environment |
 | eShop incremental: 1 file / 10 files / leaf project file | 9.9 s / 10.7 s / 5.8 s | same |
 | eShop 251-file range touching all projects | 16.6–18.2 s (no benefit over full) | same |
 | No-op sync | about 0.5 s | same |

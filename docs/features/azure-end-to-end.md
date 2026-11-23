@@ -18,7 +18,7 @@ flowchart LR
 
 - Vogoban 0.18.0 installed (see [Installation](../installation.md)) and Git.
 - The .NET SDK 8 or later on `PATH` for full semantic resolution of the C# projects. Without it, Functions are still found from their attributes, but SDK calls such as `CreateSender("orders")` are not resolved.
-- The sample repositories. They ship with the Vogoban source distribution in `test/azure/fixtures/`: `contoso-orders`, `contoso-fulfillment` and `contoso-platform-infra`. After `bun install -g ./vogoban-0.18.0-src.tar.gz` the same folder is at `~/.bun/install/global/node_modules/vogoban/test/azure/fixtures/`.
+- The sample repositories. They ship in the Vogoban source repository under `test/azure/fixtures/`: `contoso-orders`, `contoso-fulfillment` and `contoso-platform-infra`. If you installed from npm, clone the repository at the matching tag to get the sample fixtures; if you are working from a source checkout, use the fixtures directly.
 
 ## 1. Prepare the sample
 

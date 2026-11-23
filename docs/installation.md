@@ -1,6 +1,6 @@
 # Installation
 
-Vogoban 0.18.0 is a command-line tool called `vogoban`. It runs on [Bun](https://bun.sh) and is distributed as a source package (`vogoban-0.18.0-src.tar.gz`) and as a container image you build from that package. It is **not published to the npm registry**, so `npm install -g vogoban` does not work.
+Vogoban is a command-line tool called `vogoban`. It runs on [Bun](https://bun.sh) and is distributed as an npm package (published with a `beta` dist-tag during beta) and as a container image you build from the source tree.
 
 ## Requirements
 
@@ -22,19 +22,13 @@ Analyzing TypeScript or JavaScript does **not** need Node.js, npm or the reposit
    bun --version
    ```
 
-2. Install Vogoban globally from the source package:
+2. Install Vogoban globally from npm. During beta, use the `beta` dist-tag:
 
    ```bash
-   bun install -g ./vogoban-0.18.0-src.tar.gz
+   bun install -g vogoban@beta
    ```
 
-   Expected output ends like this. The blocked postinstall scripts belong to native Tree-sitter packages that Vogoban does not use (it uses the WebAssembly parsers), so you can ignore the message:
-
-   ```text
-   32 packages installed [248.00ms]
-
-   Blocked 3 postinstalls. Run `bun pm -g untrusted` for details.
-   ```
+   Expected output may include a message about blocked postinstall scripts for native Tree-sitter packages. Vogoban uses the WebAssembly parsers, so you can ignore that message.
 
 3. Make sure Bun's global bin directory is on your `PATH`. Bun installs the `vogoban` command into `~/.bun/bin`:
 
@@ -48,11 +42,16 @@ Analyzing TypeScript or JavaScript does **not** need Node.js, npm or the reposit
    vogoban --version
    ```
 
-   ```text
-   0.18.0
-   ```
+### Install from source
 
-If you have an unpacked copy of the source instead of the archive, `bun install -g /path/to/vogoban` also works. In that case the installed command links to that directory, so keep the directory where it is.
+If you have a local checkout or source package, install it with Bun:
+
+```bash
+bun install -g .
+# or: bun install -g ./vogoban-0.18.0-src.tar.gz
+```
+
+When installing from an unpacked directory, the installed command links to that directory, so keep the directory where it is.
 
 ### Upgrade and uninstall
 
@@ -80,11 +79,11 @@ Without the SDK, analysis still works: C# declarations come from Tree-sitter (a 
 
 ## Run in a container
 
-Build the image from the unpacked source package. The image contains Bun, Git, the .NET SDKs (9 and 10) and a prebuilt Roslyn analyzer:
+Build the image from the source tree. The image contains Bun, Git, the .NET SDKs and a prebuilt Roslyn analyzer:
 
 ```bash
-tar xzf vogoban-0.18.0-src.tar.gz     # unpacks into ./v
-cd v
+git clone https://github.com/Smx27/vogoban.git
+cd vogoban
 docker build -t vogoban:0.18.0 .
 docker run --rm vogoban:0.18.0 --version
 ```
