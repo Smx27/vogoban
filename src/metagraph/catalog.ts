@@ -1,5 +1,4 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import type { CatalogEntry, RepositoryStatus } from "../graph/model.ts";
 import { loadConfig } from "../pipeline/config.ts";
 import { currentCommit, discoverRepository, repositoryRoot } from "../pipeline/discovery.ts";
@@ -12,10 +11,14 @@ export interface CatalogStatus {
   reason: string | null;
 }
 
-export function registerRepository(store: GraphStore, path: string, semantic: boolean): CatalogEntry {
+export class CatalogPathConflict extends Error {}
+
+export function registerRepository(store: GraphStore, path: string, semantic: boolean, replace = false): CatalogEntry {
   const root = repositoryRoot(path);
   const repo = discoverRepository(root, loadConfig(root).repository);
   const existing = store.getCatalog(repo.id);
+  if (existing?.localPath && existing.localPath !== repo.rootPath && existsSync(existing.localPath) && !replace)
+    throw new CatalogPathConflict(`${existing.name} (${existing.identity}) is already registered from ${existing.localPath}; registering ${repo.rootPath} would replace its graph. Pass --force to switch the catalog entry to this checkout, or use a separate --db.`);
   const entry: CatalogEntry = existing
     ? { ...existing, localPath: repo.rootPath, url: repo.remoteUrl, provider: repo.provider, organization: repo.organization, defaultBranch: repo.defaultBranch ?? existing.defaultBranch, semantic }
     : {
@@ -37,48 +40,3 @@ export function catalogStatus(entry: CatalogEntry): CatalogStatus {
 }
 
 export const usableForMetaGraph = (s: CatalogStatus) => s.entry.graphVersion !== null;
-
-export function discoverRepositories(baseDir: string, maxDepth = 3): string[] {
-  const resolvedBase = resolve(baseDir);
-  if (!existsSync(resolvedBase)) return [];
-
-  const foundRoots: string[] = [];
-
-  function isGitRoot(dir: string): boolean {
-    const gitPath = join(dir, ".git");
-    return existsSync(gitPath);
-  }
-
-  function walk(currentDir: string, currentDepth: number) {
-    if (isGitRoot(currentDir)) {
-      foundRoots.push(currentDir);
-      return;
-    }
-    if (currentDepth >= maxDepth) return;
-
-    let entries: string[];
-    try {
-      entries = readdirSync(currentDir);
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      if (entry === "node_modules" || entry === ".git" || entry === "bin" || entry === "obj" || entry.startsWith(".")) {
-        continue;
-      }
-      const fullPath = join(currentDir, entry);
-      try {
-        const stat = statSync(fullPath);
-        if (stat.isDirectory()) {
-          walk(fullPath, currentDepth + 1);
-        }
-      } catch {
-        // Skip inaccessible entries
-      }
-    }
-  }
-
-  walk(resolvedBase, 0);
-  return foundRoots.sort();
-}

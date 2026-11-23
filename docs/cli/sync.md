@@ -249,7 +249,7 @@ If a `.git` directory exists but Git cannot answer (binary missing, corrupt or l
 
 ### What it does
 
-Compares the analyzed commit with the checkout and reports one state: `UP_TO_DATE`, `CHANGES_DETECTED`, `FULL_REBUILD_REQUIRED`, `NEVER_ANALYZED` or `FAILED`. It does not change the store.
+Compares the analyzed commit with the checkout and reports one state: `UP_TO_DATE`, `CHANGES_DETECTED`, `FULL_REBUILD_REQUIRED`, `NEVER_ANALYZED` or `FAILED`. It does not change the store. A directory that is not a Git repository, or was analyzed before its first commit, always reports `FULL_REBUILD_REQUIRED`: without a commit to compare against, changes cannot be detected.
 
 ### Usage
 

@@ -22,5 +22,5 @@ VOLUME ["/data"]
 EXPOSE 8080
 # `platform serve` listens on 8080; `platform worker` serves health on VOGOBAN_WORKER_HEALTH_PORT (9464): set VOGOBAN_HEALTHCHECK_PORT=9464 on worker containers.
 HEALTHCHECK --interval=30s --timeout=5s CMD curl -fsS "http://localhost:${VOGOBAN_HEALTHCHECK_PORT:-8080}/health/live" || exit 1
-ENTRYPOINT ["bun", "src/cli/main.ts"]
+ENTRYPOINT ["bun", "/app/src/cli/main.ts"]
 CMD ["platform", "serve"]

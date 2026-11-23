@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/payments/payment-declined.schema.json",
+  "title": "PaymentDeclinedEvent",
+  "description": "Published by payment-service when a payment is declined. Contract id payments/payment-declined.",
+  "type": "object",
+  "properties": {
+    "paymentId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "declinedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "paymentId",
+    "orderId",
+    "reason",
+    "declinedAt"
+  ],
+  "additionalProperties": false
+}

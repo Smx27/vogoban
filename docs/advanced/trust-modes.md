@@ -8,6 +8,8 @@ A `.csproj` file is a program, not just a list of settings. Before anything is c
 
 Vogoban's Roslyn analyzer can do this evaluation itself (through Microsoft.Build) to get the same project model a build would. That gives the most faithful graph, but property functions in a repository's build files can read files and environment variables, and SDK imports chosen by the repository run during evaluation. For a repository you did not write, that is code execution.
 
+In trusted mode, declared sibling `ProjectReference` dependencies are also evaluated to locate their existing compatible Debug output assemblies. This includes imported project metadata and custom output paths, so trust must cover those referenced projects too. Vogoban does not run their build targets or add their source files to the consuming repository's graph. Missing outputs remain unresolved; build trusted dependencies separately when needed. `ReferenceOutputAssembly="false"` references are not loaded through this path. Untrusted mode does not perform this sibling-project evaluation.
+
 With evaluation **off**, Vogoban reads project files statically: properties, `PackageReference`, `ProjectReference`, `Compile` items and the restore output (`obj/project.assets.json`) are parsed as data, and SDK logic is not executed. Analysis still uses Roslyn for semantic compilation of the C# sources; only the project model comes from static parsing.
 
 Nothing else in Vogoban executes repository content. TypeScript, Bicep, Terraform, Helm, YAML and JSON are parsed, never executed, and nothing contacts Azure or any other service.

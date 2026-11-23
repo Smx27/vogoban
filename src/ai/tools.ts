@@ -11,6 +11,7 @@ import { governanceDiff, type EntitySummary, type Violation } from "../governanc
 import { SEVERITIES } from "../governance/policy.ts";
 import { InfrastructureQuery } from "../query/infrastructure-query.ts";
 import { AzureQuery } from "../query/azure-query.ts";
+import { repositoryEdgeFact } from "../query/meta-query.ts";
 import { compress, label, ReadOnlyViolation, ScopeError, type GraphAccess } from "./access.ts";
 import { jsonSchema, validateInput, type EvidenceItem, type InputSchema, type ToolResult, type ToolStatus } from "./model.ts";
 
@@ -579,8 +580,8 @@ export const TOOLS: ToolDefinition[] = [
       const tool = `get_message_${side}`;
       const r = access.meta.messages(e.name);
       const evidence: EvidenceItem[] = [];
-      const rows: unknown[] = [];
-      const contracts = r.contracts.filter((c) => c.contract.id === e.id || c.members.some((m) => m.message?.id === e.id));
+      const rows: { repository: string | null; entity?: { name: string }; [key: string]: unknown }[] = [];
+      const contracts = access.scope.graph === "repository" ? [] : r.contracts.filter((c) => c.contract.id === e.id || c.members.some((m) => m.message?.id === e.id));
       for (const c of contracts) {
         for (const x of side === "publishers" ? c.publishers : c.consumers) {
           if (!x.repository || !access.allowed(x.repository.repositoryId)) continue;
@@ -599,25 +600,26 @@ export const TOOLS: ToolDefinition[] = [
         rows.push({ entity: access.lite(other), relationship: x.type, relationshipId: x.id, evidence: x.evidence, repository: access.repoName(x.repositoryId) });
       }
       const unresolved = r.unlinked.filter((u) => messages.some((m) => m.id === u.message.id)).flatMap((u) => u.unresolved.map((x) => x.reason));
-      return { status: rows.length || evidence.length ? "OK" : "EMPTY", summary: [rows.length ? `${rows.length} ${side} of ${label(access.lite(e))}: ${evidence.map((x) => (side === "publishers" ? x.source : x.target)?.name).filter(Boolean).slice(0, 15).join(", ")}.` : `No ${side} of ${label(access.lite(e))} are recorded in the graph.`], data: { subject: access.lite(e), contracts: contracts.map((c) => access.lite(c.contract)), [side]: rows }, evidence, unknowns: [...(rows.length ? [] : [`absence of recorded ${side} only covers analyzed repositories and supported messaging frameworks`]), ...unresolved] };
+      return { status: rows.length || evidence.length ? "OK" : "EMPTY", summary: [rows.length ? `${rows.length} ${side} of ${label(access.lite(e))}: ${[...new Set(rows.map((x) => (x.entity ? `${x.entity.name} (${x.repository ?? "-"})` : `repository ${x.repository}`)))].slice(0, 15).join(", ")}.` : `No ${side} of ${label(access.lite(e))} are recorded in the graph.`], data: { subject: access.lite(e), contracts: contracts.map((c) => access.lite(c.contract)), [side]: rows }, evidence, unknowns: [...(rows.length ? [] : [`absence of recorded ${side} only covers analyzed repositories and supported messaging frameworks`]), ...unresolved] };
     },
   })),
   {
     name: "get_repository_dependencies",
     title: "Repository dependencies",
-    description: "Cross-repository topology from the MetaGraph: downstream repositories (what this repository depends on/calls) or upstream (which repositories depend on it), with external systems.",
-    input: { repository: { ...REPO, required: true }, direction: { type: "string", enum: ["downstream", "upstream"], default: "downstream", description: "downstream = dependencies; upstream = dependents" }, depth: { ...DEPTH, default: 2, max: 6 }, environment: ENV },
+    description: "Cross-repository topology from the MetaGraph. Downstream reaches the repositories that consume this repository's contracts and the repositories it depends on, calls or deploys; upstream walks the opposite way. Every step states the stored relationship and its direction; external systems are listed for downstream.",
+    input: { repository: { ...REPO, required: true }, direction: { type: "string", enum: ["downstream", "upstream"], default: "downstream", description: "downstream = contract consumers plus dependencies, calls and deployments; upstream = the reverse" }, depth: { ...DEPTH, default: 2, max: 6 }, environment: ENV },
     run(access, args) {
+      access.requireMetaGraph();
       const repoId = access.repoIdByName(args.repository);
       const env = access.environment(args.environment);
       const t = access.meta.topology(repoId, args.direction === "upstream", Math.min(args.depth, access.limits.maxDepth), env);
       const steps = t.steps.filter((s) => access.allowed(s.repository));
       const ents = access.meta.entities(steps.flatMap((s) => [s.via.sourceId, s.via.targetId]));
-      const evidence = [...steps.map((s) => ({ ...access.fromRelationship(s.via, ents.get(s.via.sourceId) ?? null, ents.get(s.via.targetId) ?? null, s.depth === 1 ? 1 : 2, "get_repository_dependencies"), fact: `${access.repoName(s.from)} ${args.direction === "upstream" ? "is depended on by" : "depends on"} ${access.repoName(s.repository)} via ${s.via.type} (${s.via.evidence}, confidence ${s.via.confidence}${s.via.environment ? `, env ${s.via.environment}` : ""}; ${(s.via.metadata.evidenceKinds as string[] | undefined)?.join(", ") ?? ""})` })), ...t.external.map((r) => access.fromRelationship(r, null, t.externalEntities.get(r.targetId) ?? null, 2, "get_repository_dependencies"))];
+      const evidence = [...steps.map((s) => ({ ...access.fromRelationship(s.via, ents.get(s.via.sourceId) ?? null, ents.get(s.via.targetId) ?? null, s.depth === 1 ? 1 : 2, "get_repository_dependencies"), fact: `${repositoryEdgeFact(s.via.type, access.repoName(s.via.sourceRepositoryId) ?? "?", access.repoName(s.via.targetRepositoryId) ?? "?")} via ${s.via.type} (${s.via.evidence}, confidence ${s.via.confidence}${s.via.environment ? `, env ${s.via.environment}` : ""}; ${(s.via.metadata.evidenceKinds as string[] | undefined)?.join(", ") ?? ""})` })), ...t.external.map((r) => access.fromRelationship(r, null, t.externalEntities.get(r.targetId) ?? null, 2, "get_repository_dependencies"))];
       const snap = access.store.listMetaSnapshots()[0];
       return {
         status: steps.length || t.external.length ? "OK" : "EMPTY",
-        summary: [`${access.repoName(repoId)} ${args.direction === "upstream" ? "is depended on by" : "depends on"} ${steps.length ? steps.map((s) => `${access.repoName(s.repository)} (depth ${s.depth}, ${s.via.type})`).join(", ") : "no catalog repository according to the MetaGraph"}${t.external.length ? `; external systems: ${t.external.map((r) => t.externalEntities.get(r.targetId)?.name ?? r.targetId).join(", ")}` : ""}.`],
+        summary: [`${access.repoName(repoId) ?? repoId} ${args.direction === "upstream" ? "upstream" : "downstream"}: ${steps.length ? steps.map((s) => `${repositoryEdgeFact(s.via.type, access.repoName(s.via.sourceRepositoryId) ?? "?", access.repoName(s.via.targetRepositoryId) ?? "?")} (depth ${s.depth}, ${s.via.type})`).join("; ") : "no connected catalog repository according to the MetaGraph"}${t.external.length ? `; external systems: ${t.external.map((r) => t.externalEntities.get(r.targetId)?.name ?? r.targetId).join(", ")}` : ""}.`],
         data: { repository: access.repoName(repoId), direction: args.direction, environment: env ?? null, metaSnapshot: snap?.id ?? null, steps: steps.map((s) => ({ depth: s.depth, from: access.repoName(s.from), repository: access.repoName(s.repository), relationship: s.via.type, relationshipId: s.via.id, evidence: s.via.evidence, confidence: s.via.confidence, environment: s.via.environment, evidenceKinds: s.via.metadata.evidenceKinds ?? [] })), external: t.external.map((r) => ({ system: t.externalEntities.get(r.targetId)?.name ?? r.targetId, relationship: r.type, evidence: r.evidence })) },
         evidence,
         unknowns: [...(snap ? [] : ["no MetaGraph has been built; cross-repository relationships are unavailable (run 'metagraph build')"]), ...(t.steps.length > steps.length ? [`${t.steps.length - steps.length} repositories outside the permitted scope were withheld`] : []), ...access.meta.catalog().filter((c) => c.status !== "READY" && access.allowed(c.entry.repositoryId)).map((c) => `repository ${c.entry.name} is ${c.status}${c.reason ? ` (${c.reason})` : ""}; its cross-repository facts may be missing or stale`)],
@@ -832,8 +834,8 @@ export const TOOLS: ToolDefinition[] = [
       const e = args.entity ? subject(access, args, "entity", ["Application", "Repository"]) : null;
       const repoName = e ? access.repoName(e.repositoryId) : null;
       const filter = args.filter ? String(args.filter).toLowerCase() : null;
-      const resources = model.resources.filter((r) => (!filter || r.resource.name.toLowerCase().includes(filter)) && (!e || r.accessors.some((a) => (e.kind === "Application" ? a.services.some((s) => s.id === e.id) || a.entity.id === e.id : a.entity.repository === repoName))));
-      const metaSystems = access.scope.graph === "repository" ? [] : access.meta.externalSystems(args.filter).filter((x) => !e || x.repositories.includes(repoName!));
+      const resources = model.resources.map((r) => ({ ...r, accessors: r.accessors.filter((a) => access.allowedName(a.entity.repository)) })).filter((r) => r.accessors.length && (!filter || r.resource.name.toLowerCase().includes(filter)) && (!e || r.accessors.some((a) => (e.kind === "Application" ? a.services.some((s) => s.id === e.id) || a.entity.id === e.id : a.entity.repository === repoName))));
+      const metaSystems = access.scope.graph === "repository" ? [] : access.meta.externalSystems(args.filter).map((x) => ({ ...x, repositories: x.repositories.filter((name) => access.allowedName(name)) })).filter((x) => x.repositories.length && (!e || x.repositories.includes(repoName!)));
       const limit = Math.min(args.limit, access.limits.maxResults);
       const tool = "get_external_systems";
       return {
@@ -857,6 +859,7 @@ export const TOOLS: ToolDefinition[] = [
     input: { repository: REPO, meta: { type: "boolean", default: false, description: "List MetaGraph snapshots" } },
     run(access, args) {
       const repositoryId = args.repository ? access.repoIdByName(args.repository) : undefined;
+      if (args.meta) access.requireMetaGraph();
       const list = access.store.listGraphSnapshots({ scope: args.meta ? "meta" : "repository", repositoryId }).filter((s) => access.allowed(s.repositoryId));
       return { status: list.length ? "OK" : "EMPTY", summary: [`${list.length} ${args.meta ? "MetaGraph" : "repository"} snapshots${repositoryId ? ` for ${access.repoName(repositoryId)}` : ""}.`, ...list.slice(-10).map((s) => `  ${s.id} ${access.repoName(s.repositoryId) ?? "meta"} ${s.commit?.slice(0, 12) ?? s.graphVersion.slice(0, 12)} ${s.createdAt}`)], data: { snapshots: list.map((s) => ({ ...s, repository: access.repoName(s.repositoryId) })) } };
     },

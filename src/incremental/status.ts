@@ -71,6 +71,7 @@ export function syncStatus(path: string, store: GraphStore, plugins: readonly Pl
     }
   }
 
+  if (!fullReason && !catalog.analyzedCommit) fullReason = "changes cannot be detected without a commit to compare against (not a Git repository, or no commit when it was analyzed); only a full rebuild is safe";
   if (fullReason) return { ...base, state: "FULL_REBUILD_REQUIRED", upToDate: false, changedFiles, changeSet, fullRebuildRequired: true, fullRebuildReason: fullReason };
 
   const upToDate = changedFiles === 0 && !dirty && (workingCommit === null || workingCommit === catalog.analyzedCommit);

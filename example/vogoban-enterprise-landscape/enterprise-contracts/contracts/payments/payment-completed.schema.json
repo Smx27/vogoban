@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/payments/payment-completed.schema.json",
+  "title": "PaymentCompletedEvent",
+  "description": "Published by payment-service when a payment is successfully completed. Contract id payments/payment-completed.",
+  "type": "object",
+  "properties": {
+    "paymentId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "amount": {
+      "type": "number"
+    },
+    "currency": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "failed",
+        "refunded"
+      ]
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "paymentId",
+    "orderId",
+    "amount",
+    "currency",
+    "status",
+    "completedAt"
+  ],
+  "additionalProperties": false
+}

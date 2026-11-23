@@ -4,6 +4,23 @@ import type { GraphStore } from "../store/store.ts";
 
 export const REPOSITORY_EDGES: RelationshipType[] = ["CALLS_REPOSITORY", "DEPENDS_ON_REPOSITORY", "CONSUMES_REPOSITORY_CONTRACT", "SHARES_CONTRACT_WITH", "DEPLOYS_REPOSITORY"];
 
+export function repositoryEdgeFact(type: RelationshipType, source: string, target: string): string {
+  switch (type) {
+    case "CONSUMES_REPOSITORY_CONTRACT":
+      return `${source} consumes contracts published by ${target}`;
+    case "CALLS_REPOSITORY":
+      return `${source} calls ${target}`;
+    case "DEPENDS_ON_REPOSITORY":
+      return `${source} depends on ${target}`;
+    case "DEPLOYS_REPOSITORY":
+      return `${source} deploys ${target}`;
+    case "SHARES_CONTRACT_WITH":
+      return `${source} shares a contract with ${target}`;
+    default:
+      return `${source} ${type} ${target}`;
+  }
+}
+
 export interface Connection {
   relationship: MetaRelationship;
   other: Entity | null;
@@ -170,9 +187,10 @@ export class MetaQuery {
       for (const repo of frontier) {
         const rels = this.store.findMetaRelationships({ types: REPOSITORY_EDGES, repositoryId: repo, environment });
         for (const r of rels) {
+          if (reverse && r.type === "SHARES_CONTRACT_WITH") continue;
           const from = r.type === "CONSUMES_REPOSITORY_CONTRACT" ? r.targetRepositoryId : r.sourceRepositoryId;
           const to = r.type === "CONSUMES_REPOSITORY_CONTRACT" ? r.sourceRepositoryId : r.targetRepositoryId;
-          const [a, b] = reverse ? [to, from] : [from, to];
+          const [a, b] = r.type === "SHARES_CONTRACT_WITH" ? (from === repo ? [from, to] : [to, from]) : reverse ? [to, from] : [from, to];
           if (a !== repo || !b || seen.has(b)) continue;
           seen.add(b);
           next.push(b);

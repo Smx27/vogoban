@@ -16,6 +16,7 @@ export const NODE_HEIGHT = 108;
 export function layoutTopology(
   entities: Entity[],
   relationships: Relationship[],
+  mode: "overview" | "details" = "details",
 ): Map<string, { x: number; y: number }> {
   const ids = new Set(entities.map((entity) => entity.id));
   const edges = relationships.filter(
@@ -58,8 +59,16 @@ export function layoutTopology(
   let offsetX = 36;
   let offsetY = 36;
   let rowHeight = 0;
+  const rowWidth =
+    mode === "overview"
+      ? Math.max(
+          1660,
+          Math.sqrt(entities.length * (NODE_WIDTH + 90) * (NODE_HEIGHT + 80)) *
+            1.2,
+        )
+      : 1660;
   for (const members of components) {
-    if (members.length > 160) {
+    if (members.length > (mode === "overview" ? 12 : 160)) {
       const nodes: (SimulationNodeDatum & { id: string })[] = members
         .toSorted()
         .map((id) => ({ id }));
@@ -95,7 +104,7 @@ export function layoutTopology(
         Math.max(...nodes.map((node) => node.x!)) - minX + NODE_WIDTH;
       const height =
         Math.max(...nodes.map((node) => node.y!)) - minY + NODE_HEIGHT;
-      if (offsetX > 36) {
+      if (offsetX > 36 && (mode !== "overview" || offsetX + width > rowWidth)) {
         offsetX = 36;
         offsetY += rowHeight + 80;
         rowHeight = 0;
@@ -106,7 +115,7 @@ export function layoutTopology(
           y: offsetY + node.y! - minY,
         });
       offsetX += width + 96;
-      rowHeight = height;
+      rowHeight = Math.max(rowHeight, height);
       continue;
     }
     const component = new dagre.graphlib.Graph({ multigraph: true })
@@ -126,7 +135,7 @@ export function layoutTopology(
         component.setEdge(edge.sourceId, edge.targetId, {}, edge.id);
     dagre.layout(component);
     const { width = 0, height = 0 } = component.graph();
-    if (offsetX > 36 && offsetX + width > 1660) {
+    if (offsetX > 36 && offsetX + width > rowWidth) {
       offsetX = 36;
       offsetY += rowHeight + 80;
       rowHeight = 0;
@@ -146,13 +155,23 @@ export function layoutTopology(
       NODE_HEIGHT +
       100
     : 36;
-  entities
-    .filter((entity) => !connected.has(entity.id))
-    .forEach((entity, index) => {
-      positions.set(entity.id, {
-        x: 36 + (index % 4) * (NODE_WIDTH + 44),
-        y: bottom + Math.floor(index / 4) * (NODE_HEIGHT + 44),
-      });
+  const isolated = entities.filter((entity) => !connected.has(entity.id));
+  const columns =
+    mode === "overview"
+      ? Math.max(
+          4,
+          Math.ceil(
+            Math.sqrt(
+              (isolated.length * (NODE_HEIGHT + 44)) / (NODE_WIDTH + 44),
+            ),
+          ),
+        )
+      : 4;
+  isolated.forEach((entity, index) => {
+    positions.set(entity.id, {
+      x: 36 + (index % columns) * (NODE_WIDTH + 44),
+      y: bottom + Math.floor(index / columns) * (NODE_HEIGHT + 44),
     });
+  });
   return positions;
 }

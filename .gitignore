@@ -1,8 +1,6 @@
 # Dependencies
 node_modules/
 
-# Bun
-bun.lock
 
 # Build outputs
 bin/
@@ -41,11 +39,9 @@ coverage/
 .env.*.local
 
 # Docker
-.dockerignore
 
 # Misc
 *.tgz
 .cache/
-.vogoban/
 test/eShop
 .vogoban

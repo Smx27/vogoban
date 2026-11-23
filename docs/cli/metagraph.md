@@ -2,7 +2,9 @@
 
 The **MetaGraph** connects several repository graphs stored in one store: which repository provides an API another consumes, who publishes and consumes a shared message contract, which packages and external systems repositories share, and which repository depends on which infrastructure. Repository graphs stay authoritative for their own facts; the MetaGraph only adds cross-repository relationships with evidence and a confidence value.
 
-This page covers the catalog commands (`register`, `analyze-repo`, `analyze-all`, `repositories`, `repository`), `metagraph build|stats|snapshots|unresolved|conflicts|export`, and the cross-repository queries. Concepts are explained in [MetaGraph](../features/metagraph.md); cross-repository impact is `repository-impact` in [impact.md](impact.md#repository-impact).
+This page covers `discover`, the catalog commands (`register`, `analyze-repo`, `analyze-all`, `repositories`, `repository`), `metagraph build|stats|snapshots|unresolved|conflicts|export`, and the cross-repository queries. Concepts are explained in [MetaGraph](../features/metagraph.md); cross-repository impact is `repository-impact` in [impact.md](impact.md#repository-impact).
+
+For a copyable eleven-repository workflow and its verified connectivity limits, see [build and inspect a multi-repository MetaGraph](../graph/metagraph-workflow.md). Register and analyze each repository into the same explicitly selected store, then build the MetaGraph separately. Analyzing their parent folder once does not federate the children, and `metagraph build` does not import their separate local databases. Shared-package and external-system edges are not proof of service-to-service calls.
 
 The examples use one store for three demo repositories: `contoso-orders` (ASP.NET Core API, Functions, React, Bicep), `contoso-fulfillment` (.NET Functions consuming `orders`, publishing `shipments`) and `contoso-platform-infra` (Terraform). Point every command at the shared store with `--db` or `VOGOBAN_DB`:
 
@@ -12,27 +14,14 @@ export VOGOBAN_DB=$HOME/demo/meta/graph.db
 
 The repositories have no Git remote, so their identity is `local:<path>`. With a remote, the identity is derived from the remote URL and stays stable across clones. The outputs below come from two copies of the demo store, so paths, ids and commits vary between examples; yours will differ too.
 
-## Batch Discovery workflow (`metagraph discover`)
-
-Instead of registering each repository individually, you can automatically discover all repositories under a parent directory:
+## Typical workflow
 
 ```bash
-# Auto-discover and register all git repositories up to depth 3 (default)
-vogoban metagraph discover /path/to/workspace
-
-# Discover, register, run analysis, and build MetaGraph in one go
-vogoban metagraph discover /path/to/workspace --analyze --build
-
-# Specify a custom directory search depth limit
-vogoban metagraph discover /path/to/workspace --max-depth 4 --analyze --build
+vogoban discover .          # find, register and analyze every repository under this folder, then build the MetaGraph
+vogoban connections
 ```
 
-The `--max-depth` option defaults to `3`. Common values:
-- `1`: Immediate subdirectories only (e.g. `/workspace/repo-a`, `/workspace/repo-b`).
-- `2` or `3` (recommended): Standard multi-repo workspaces with grouped folders (e.g. `/workspace/services/catalog-api`).
-- `4` to `6`: Deeply nested enterprise monorepo/multi-repo directory trees.
-
-## Typical workflow
+or step by step:
 
 ```bash
 vogoban register ./contoso-orders
@@ -45,58 +34,58 @@ vogoban connections
 
 After code changes, `vogoban graph sync <path> --meta` updates one repository and rebuilds the MetaGraph in one step (see [sync.md](sync.md)).
 
-## metagraph discover
+## discover
 
 ### What it does
 
-Traverses a parent directory up to `--max-depth` (default `3`), automatically locates Git repository roots, registers them into the catalog, and optionally triggers full repository analysis (`--analyze`) and MetaGraph building (`--build`). Subdirectories inside an already discovered Git repository root are automatically skipped.
+Finds the repositories under a folder and brings the MetaGraph up to date in one step: it registers every repository it finds, analyzes the new and changed ones, and rebuilds the MetaGraph. A folder counts as a repository when it contains `.git`, `vogoban.json` or `catalog-info.yaml` (or `catalog-info.yml`). The walk does not descend into a repository it found, skips `node_modules`, `bin`, `obj`, `dist`, `target`, `vendor` and dot-folders, and never follows symbolic links.
+
+A Git checkout whose commit and working tree match the last analysis is reported as `UNCHANGED` and not reanalyzed; a folder without Git is always reanalyzed (the fact cache keeps that cheap). Catalog entries registered under the folder whose path no longer exists are listed as stale; their stored graphs stay in the MetaGraph until you remove them. A descriptor-only folder inside another Git repository is `SKIPPED` with the reason, because Vogoban identifies a repository by its Git root.
 
 ### Usage
 
 ```bash
-vogoban metagraph discover <directory> [--max-depth N] [--analyze] [--build] [--no-semantic] [--json]
+vogoban discover <dir> [--depth N] [--dry-run] [--no-analyze] [--no-build] [--force] [--no-semantic] [--trust-repository | --untrusted] [--json]
 ```
 
-### Options
+| Option | Default | Meaning |
+|---|---|---|
+| `--depth N` | 4 | How many folder levels below `<dir>` to search |
+| `--dry-run` | off | List what was found and whether it is new; change nothing |
+| `--no-analyze` | off | Register only (implies no MetaGraph build) |
+| `--no-build` | off | Register and analyze, but do not rebuild the MetaGraph |
+| `--force` | off | Reanalyze unchanged checkouts and recompute every MetaGraph category |
 
-- `--max-depth <N>`: Directory traversal depth limit for Git root detection. Default is `3`. Use `1` for flat workspace folders, `2` or `3` for grouped folders, or higher (e.g., `5`) for nested organizational structures.
-- `--analyze`: Automatically run analysis across all discovered repositories.
-- `--build`: Build the MetaGraph snapshot once repositories are analyzed.
-- `--no-semantic`: Disable semantic analysis when registering and analyzing repositories.
-- `--json`: Output machine-readable JSON summary.
+Exit code 0 when every repository was analyzed or unchanged, 1 when any analysis failed (the others still run and the MetaGraph is still built), 2 when the folder does not exist.
 
 ### Example
 
 ```bash
-vogoban metagraph discover /var/repos --analyze --build
+vogoban discover ~/landscape --db ~/landscape/.vogoban/meta.db --trust-repository
 ```
 
 ### Output
 
 ```text
-Discovered 3 repositories under /var/repos (depth: 3)
-  newly registered: 3, existing: 0
-repository           status    path
--------------------  --------  -------------------------
-contoso-orders       new       /var/repos/contoso-orders
-contoso-fulfillment  new       /var/repos/contoso-fulfillment
-contoso-platform-infra new     /var/repos/contoso-platform-infra
-
-Analysis results:
-repository           status  commit        detail
--------------------  ------  ------------  ----------------------------------
-contoso-orders       READY   8f3e1b7c2a10  entities=42 relationships=89 120ms
-contoso-fulfillment  READY   a1b2c3d4e5f6  entities=28 relationships=54 85ms
-contoso-platform-infra READY e5f6a1b2c3d4  entities=15 relationships=30 50ms
-
-MetaGraph build snapshot: snap_8e9bc4c6c66ec999c08e1740 (3 repositories)
+repository            action     marker  path                               detail
+--------------------  ---------  ------  ---------------------------------  --------------------------------------
+admin-portal          UNCHANGED  .git    /home/me/landscape/admin-portal    analyzed at 4ba37f9061ef
+customer-service      ANALYZED   .git    /home/me/landscape/customer-service  entities=504 relationships=1216 1931ms
+…
+stale catalog entry: operations-portal (/home/me/landscape/operations-portal) registered under this directory but no longer found there
+MetaGraph snapshot snap_c043827f865b6ecc746e6ca1: 11 repositories, 161 relationships, 22 unresolved, 0 conflicts
 ```
+
+### Common mistakes
+
+- Running it on a folder that is itself inside a Git repository, such as `example/` in a Vogoban clone. Copy the folder out, or give each repository its own checkout.
+- Expecting message and Azure links from .NET repositories whose packages are not restored. The detail column says `.NET project(s) not restored`; run `dotnet restore` and discover again.
 
 ## register
 
 ### What it does
 
-Adds a repository to the catalog without analyzing it. The repository's identity, name, remote URL, provider and default branch are discovered from Git. Registering an already-known repository updates its path and metadata. `vogoban analyze <path>` also adds the repository to the catalog, so `register` is only needed when you want to analyze later with `analyze-repo`/`analyze-all`.
+Adds a repository to the catalog without analyzing it. The repository's identity, name, remote URL, provider and default branch are discovered from Git. Registering an already-known repository from the same path updates its metadata. Registering a second checkout with the same identity (for example another clone of the same remote) is refused with exit 2, because it would replace the first checkout's graph; pass `--force` to switch the catalog entry to the new checkout, or use a separate `--db`. A path that is not a directory exits 2. `vogoban analyze <path>` also adds the repository to the catalog, so `register` is only needed when you want to analyze later with `analyze-repo`/`analyze-all`.
 
 ### Usage
 
@@ -126,7 +115,7 @@ Registered contoso-orders (e_ebfb205c403f02991a5b8df1) identity=local:/home/user
 
 ### What it does
 
-`analyze-repo` analyzes one catalog repository from its registered path. `analyze-all` analyzes every catalog repository in turn; a failure in one does not stop the others. Each run is a normal full analysis (the same as `vogoban analyze <path>`).
+`analyze-repo` analyzes one catalog repository from its registered path. `analyze-all` analyzes every catalog repository in turn; a failure in one does not stop the others, and the command exits 1 when any repository `FAILED`. A repository whose .NET projects compiled with errors is still `READY`, and its detail column carries a warning (with a restore hint when packages are not restored). Each run is a normal full analysis (the same as `vogoban analyze <path>`).
 
 ### Usage
 
@@ -154,6 +143,8 @@ contoso-platform-infra  READY   71a45f03cfbd  entities=18 relationships=28 276ms
 ```
 
 `status` is `READY`, `FAILED` (with the error in `detail`) or `UNAVAILABLE` (the registered path no longer exists).
+
+`READY` does not mean semantic analysis was free of compiler diagnostics or that every expected cross-repository interaction was found. Check `metagraph stats`, `metagraph unresolved` and the repository's analysis diagnostics; the [enterprise-landscape validation](../graph/metagraph-workflow.md#verified-enterprise-landscape-results-and-limits) demonstrates this distinction.
 
 ### Useful options
 
@@ -598,9 +589,9 @@ ExternalSystem  cosmos-contoso-orders.documents.azure.com       api          con
 
 ### What it does
 
-Walks repository-level MetaGraph relationships from one repository and prints the reachable repositories as a tree, plus the external systems it uses.
+Walks repository-level MetaGraph relationships from one repository and prints the reachable repositories as a tree, plus the external systems it uses. Each line states the stored fact in plain words, from the direction it was stored, followed by the relationship type, evidence, confidence and evidence kinds.
 
-"Downstream" follows two kinds of edge: from a contract provider to the repositories that consume its contracts (`CONSUMES_REPOSITORY_CONTRACT`, reversed), and from a repository to the repositories it depends on (`DEPENDS_ON_REPOSITORY`). `--reverse` walks the opposite way.
+"Downstream" follows: from a contract provider to the repositories that consume its contracts (`CONSUMES_REPOSITORY_CONTRACT`, reversed), from a repository to the repositories it depends on, calls or deploys (`DEPENDS_ON_REPOSITORY`, `CALLS_REPOSITORY`, `DEPLOYS_REPOSITORY`), and to repositories that share a contract (`SHARES_CONTRACT_WITH`, whichever side stored it). `--reverse` walks the opposite way and skips shared contracts, because sharing a contract does not make either repository the other's upstream.
 
 ### Usage
 
@@ -613,28 +604,32 @@ vogoban metagraph-topology <repo> [--reverse] [--depth N] [--env E]
 ### Example
 
 ```bash
-vogoban metagraph-topology contoso-orders
-vogoban metagraph-topology contoso-platform-infra --reverse
+vogoban metagraph-topology orders-service
+vogoban metagraph-topology enterprise-contracts --reverse --depth 1
 ```
 
 ### Output
 
+From the bundled enterprise landscape:
+
 ```text
-contoso-orders (downstream)
-  contoso-fulfillment  via CONSUMES_REPOSITORY_CONTRACT from contoso-orders  STRUCTURALLY_RESOLVED 0.8 [exact-resource-name, producer-consumer]
-    contoso-platform-infra  via DEPENDS_ON_REPOSITORY from contoso-fulfillment  STRUCTURALLY_RESOLVED 0.8 [infrastructure-declaration]
-  external cosmos-contoso-orders.documents.azure.com (USES_EXTERNAL_SYSTEM)  DECLARED 0.9 env=local [configuration-url]
+orders-service (downstream)
+  notification-service consumes contracts published by orders-service (CONSUMES_REPOSITORY_CONTRACT)  STRUCTURALLY_RESOLVED 0.8 [exact-resource-name, producer-consumer]
+  orders-service depends on infrastructure (DEPENDS_ON_REPOSITORY)  STRUCTURALLY_RESOLVED 0.8 [infrastructure-declaration]
+  order-processing consumes contracts published by orders-service (CONSUMES_REPOSITORY_CONTRACT)  COMPILER_RESOLVED 0.95 [compiled-contract-identity]
+  external vg-enterprise-kv.vault.azure.net (USES_EXTERNAL_SYSTEM)  DECLARED 0.9 [configuration-url]
 ```
 
 ```text
-contoso-platform-infra (upstream)
-  contoso-fulfillment  via DEPENDS_ON_REPOSITORY from contoso-platform-infra  STRUCTURALLY_RESOLVED 0.8 [infrastructure-declaration]
-    contoso-orders  via CONSUMES_REPOSITORY_CONTRACT from contoso-fulfillment  STRUCTURALLY_RESOLVED 0.8 [exact-resource-name, producer-consumer]
+enterprise-contracts (upstream)
+  notification-service depends on enterprise-contracts (DEPENDS_ON_REPOSITORY)  DECLARED 0.95 [project-reference-path]
+  admin-portal depends on enterprise-contracts (DEPENDS_ON_REPOSITORY)  DECLARED 0.95 [file-dependency-path]
+  …
 ```
 
 ### Common mistakes
 
-- Reading "downstream" as "data flows there" for every hop. The two edge kinds mix message flow (provider to consumer) and dependency (dependent to dependency). The `via` column says which one each hop is.
+- Reading "downstream" as "data flows there" for every hop. The walk mixes message flow (provider to consumer) and dependency (dependent to dependency); the sentence on each line says which one the hop is.
 
 ## Related
 

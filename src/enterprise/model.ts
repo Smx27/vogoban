@@ -736,6 +736,7 @@ export function buildEnterpriseModel(store: GraphStore, set: SnapshotSet, cfg: E
     return null;
   };
   const coOwner = (h: string) => handleTeam.get(h.toLowerCase()) ?? `principal:${h}`;
+  const bsOwner = (o: string) => (teamById.has(o) ? o : handleTeam.get(o.toLowerCase()) ?? `principal:${o}`);
   for (const [repo, rules] of coRules) {
     const files = sortStr(filesByRepo.get(repo) ?? []);
     for (const e of [...graph.entities.values()].filter((x) => x.repositoryId === repo && isComponentKind(x.kind)).sort((a, b) => a.id.localeCompare(b.id))) {
@@ -773,6 +774,21 @@ export function buildEnterpriseModel(store: GraphStore, set: SnapshotSet, cfg: E
       for (const o of owners) claim(e.id, { owner: coOwner(o), source: "codeowners", role: "owner", inherited: false, definitive: true, rule: `${m.file}:${m.line}`, evidence: `CODEOWNERS ${ruleText(m)} covers ${where}` });
     }
   }
+  for (const r of byKind("OwnershipRule").filter((x) => x.metadata.source === "BACKSTAGE" && x.repositoryId)) {
+    const owners = strs(r.metadata.owners);
+    if (!owners.length) continue;
+    const dir = String(r.metadata.pattern ?? "*").replace(/\/?\*\*$|^\*$/g, "");
+    const evidence = `Backstage ${r.file}:${r.line} ${r.metadata.catalogKind} ${r.metadata.catalogName} spec.owner ${owners.join(" ")}`;
+    for (const e of [...graph.entities.values()].filter((x) => x.repositoryId === r.repositoryId && isComponentKind(x.kind))) {
+      if (e.kind === "Repository") {
+        if (!dir) for (const o of owners) claim(e.id, { owner: bsOwner(o), source: "backstage", role: "owner", inherited: false, definitive: true, rule: `${r.file}:${r.line}`, evidence: `${evidence} (repository descriptor)` });
+        continue;
+      }
+      const location = e.kind === "Project" || e.kind === "Application" ? (graph.project(e)?.qualifiedName ?? "") : (e.file ?? "");
+      if (dir && !location.startsWith(`${dir}/`)) continue;
+      for (const o of owners) claim(e.id, { owner: bsOwner(o), source: "backstage", role: "owner", inherited: true, definitive: true, rule: `${r.file}:${r.line}`, evidence: `${evidence} covers ${dir ? `directory ${dir}` : "the repository"}` });
+    }
+  }
   const ownership: OwnershipRecord[] = [];
   for (const e of [...graph.entities.values()].filter((x) => isComponentKind(x.kind)).sort((a, b) => a.id.localeCompare(b.id))) {
     const all = claims.get(e.id) ?? [];
@@ -781,7 +797,9 @@ export function buildEnterpriseModel(store: GraphStore, set: SnapshotSet, cfg: E
     const explicit = explicitDirect.length ? explicitDirect : owners.filter((c) => c.source === "explicit");
     const co = owners.filter((c) => c.source === "codeowners");
     const coDefinitive = co.filter((c) => c.definitive && c.owner);
-    const bySource: Record<OwnershipSource, string[]> = { explicit: sortStr(explicit.map((c) => c.owner)), codeowners: sortStr(coDefinitive.map((c) => c.owner)) };
+    const backstage = owners.filter((c) => c.source === "backstage" && c.owner);
+    const backstageDirect = backstage.filter((c) => !c.inherited);
+    const bySource: Record<OwnershipSource, string[]> = { explicit: sortStr(explicit.map((c) => c.owner)), codeowners: sortStr(coDefinitive.map((c) => c.owner)), backstage: sortStr((backstageDirect.length ? backstageDirect : backstage).map((c) => c.owner)) };
     let state: OwnershipState;
     let resolved: string[] = [];
     let resolution: string;
@@ -797,6 +815,10 @@ export function buildEnterpriseModel(store: GraphStore, set: SnapshotSet, cfg: E
       const disagree = bySource.explicit.length && bySource.codeowners.length && bySource.explicit.join() !== bySource.codeowners.join();
       state = explicitConflict || disagree ? "CONFLICT" : "OWNED";
       resolution = state === "CONFLICT" ? (explicitConflict ? `explicit rules ${explicitRules.join(", ")} assign different teams` : `enterprise metadata (${bySource.explicit.join(", ")}) and CODEOWNERS (${bySource.codeowners.join(", ")}) disagree`) + "; no precedence rule is configured, so both owners are kept" : bySource.codeowners.length > 1 || bySource.explicit.length > 1 ? "joint owners declared by a single source" : `single owner from ${bySource.explicit.length ? "enterprise metadata" : "CODEOWNERS"}`;
+    } else if (bySource.backstage.length) {
+      resolved = bySource.backstage;
+      state = "OWNED";
+      resolution = bySource.backstage.length > 1 ? "joint owners declared in Backstage catalog descriptors" : "single owner from a Backstage catalog descriptor (catalog-info.yaml)";
     } else if (co.some((c) => !c.definitive)) {
       state = "OWNER_UNKNOWN";
       resolution = "CODEOWNERS evidence exists but maps to different owners within this component";

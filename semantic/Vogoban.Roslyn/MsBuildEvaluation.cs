@@ -6,6 +6,8 @@ namespace Vogoban.Roslyn;
 public sealed class EvaluatedFramework
 {
     public required string TargetFramework { get; init; }
+    public List<string> TargetFrameworks { get; init; } = new();
+    public string? TargetPath { get; init; }
     public List<string> Compile { get; init; } = new();
     public List<string> Usings { get; init; } = new();
     public List<string> DefineConstants { get; init; } = new();
@@ -58,6 +60,23 @@ public static class MsBuildEvaluation
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvaluatedFramework Evaluate(string projectPath, string targetFramework) => Evaluator.Evaluate(projectPath, targetFramework);
 
+    public static string? ReferenceOutput(string projectPath, TargetFramework consumer)
+    {
+        var evaluated = Evaluate(projectPath, "");
+        var frameworks = evaluated.TargetFrameworks.Count > 0 ? evaluated.TargetFrameworks : new List<string> { evaluated.TargetFramework };
+        var selected = frameworks.FirstOrDefault(f => f == consumer.Moniker)
+            ?? frameworks.Select(TargetFramework.Parse)
+                .Where(f => f.Family == consumer.Family && f.Version <= consumer.Version && !f.Moniker.Contains('-'))
+                .OrderByDescending(f => f.Version).Select(f => f.Moniker).FirstOrDefault()
+            ?? frameworks.Select(TargetFramework.Parse)
+                .Where(f => f.Family == "netstandard" && (consumer.Family == "net" || consumer.Family == "netcoreapp")
+                    && f.Version <= (consumer.Family == "net" || consumer.Version >= new Version(3, 0) ? new Version(2, 1) : consumer.Version >= new Version(2, 0) ? new Version(2, 0) : new Version(1, 6)))
+                .OrderByDescending(f => f.Version).Select(f => f.Moniker).FirstOrDefault();
+        if (selected == null) return null;
+        if (selected != evaluated.TargetFramework) evaluated = Evaluate(projectPath, selected);
+        return evaluated.TargetPath is { } output && File.Exists(output) ? output : null;
+    }
+
     private static class Evaluator
     {
         private static readonly Microsoft.Build.Evaluation.ProjectCollection Collection = new();
@@ -66,10 +85,10 @@ public static class MsBuildEvaluation
         {
             var globals = new Dictionary<string, string>
             {
-                ["TargetFramework"] = targetFramework,
                 ["Configuration"] = "Debug",
                 ["DesignTimeBuild"] = "true",
             };
+            if (targetFramework.Length > 0) globals["TargetFramework"] = targetFramework;
             var project = new Microsoft.Build.Evaluation.Project(projectPath, globals, null, Collection, Microsoft.Build.Evaluation.ProjectLoadSettings.IgnoreMissingImports | Microsoft.Build.Evaluation.ProjectLoadSettings.IgnoreInvalidImports);
             try
             {
@@ -78,7 +97,9 @@ public static class MsBuildEvaluation
                 var central = project.GetItems("PackageVersion").ToDictionary(i => i.EvaluatedInclude, i => i.GetMetadataValue("Version"), StringComparer.OrdinalIgnoreCase);
                 return new EvaluatedFramework
                 {
-                    TargetFramework = targetFramework,
+                    TargetFramework = project.GetPropertyValue("TargetFramework"),
+                    TargetFrameworks = project.GetPropertyValue("TargetFrameworks").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList(),
+                    TargetPath = NullIfEmpty(project.GetPropertyValue("TargetPath")),
                     Compile = project.GetItems("Compile").Select(i => Full(i.EvaluatedInclude)).Where(p => p.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList(),
                     Usings = project.GetItems("Using")
                         .Where(i => string.IsNullOrEmpty(i.GetMetadataValue("Alias")) && !string.Equals(i.GetMetadataValue("Static"), "true", StringComparison.OrdinalIgnoreCase))
@@ -91,7 +112,9 @@ public static class MsBuildEvaluation
                             Version = NullIfEmpty(i.GetMetadataValue("Version")) ?? (central.TryGetValue(i.EvaluatedInclude, out var v) ? NullIfEmpty(v) : null),
                         })
                         .GroupBy(p => p.Name, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList(),
-                    ProjectReferences = project.GetItems("ProjectReference").Select(i => Full(i.EvaluatedInclude)).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList(),
+                    ProjectReferences = project.GetItems("ProjectReference")
+                        .Where(i => !string.Equals(i.GetMetadataValue("ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase))
+                        .Select(i => Full(i.EvaluatedInclude)).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList(),
                     FrameworkReferences = project.GetItems("FrameworkReference").Select(i => i.EvaluatedInclude).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList(),
                     LangVersion = NullIfEmpty(project.GetPropertyValue("LangVersion")),
                     Nullable = NullIfEmpty(project.GetPropertyValue("Nullable")),

@@ -144,10 +144,9 @@ vogoban repositories --db backups/orders-2026-10-11.db
 
 Replaces the target store with a backup file:
 
-1. Checks that `--from` exists, then opens it as a graph store and reads its statistics.
+1. Checks that `--from` exists and is not the target itself, then opens it as a graph store and reads its statistics.
 2. Closes the target store.
-3. Deletes the target `graph.db`, `graph.db-wal` and `graph.db-shm`.
-4. Copies the backup file to the target path.
+3. Copies the backup next to the target, removes the target's `-wal` and `-shm` files, and renames the copy over the target, so a failed copy never leaves the target deleted.
 
 The target is `--db`, `$VOGOBAN_DB` or `./.vogoban/graph.db`. After restore, every command (graph queries, MetaGraph, analysis, `graph sync`, local MCP) uses the restored data.
 
@@ -184,6 +183,7 @@ Snapshots, catalog and history come back with the graph.
 | --- | --- |
 | `--from` missing | exit 2, `--from <backup> is required` |
 | backup file does not exist | exit 2, `backup not found: <path>` |
+| backup and target are the same file (including through `$VOGOBAN_DB`) | exit 2, `backup and target are the same file: <path>`; nothing is changed |
 | target is a `postgres…` URL | exit 2, `restore targets a local sqlite store; set --db to a file path` |
 | backup file is not a SQLite database | exit 1, `file is not a database`; the target is left untouched |
 

@@ -21,6 +21,7 @@ It is static analysis: nothing in your repository is executed, nothing is deploy
 - [Installation](installation.md)
 - [Five-minute quickstart](quickstart.md)
 - [First repository analysis](getting-started.md)
+- [Multi-repository MetaGraph workflow and verified connectivity limits](graph/metagraph-workflow.md)
 
 ## Learn Vogoban
 

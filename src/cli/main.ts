@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 import { parseArgs } from "node:util";
-import { isEntityKind, isRelationshipType, type Entity, type EntityKind, type RelationshipType } from "../graph/model.ts";
+import { isEntityKind, isRelationshipType, type CatalogEntry, type Entity, type EntityKind, type RelationshipType } from "../graph/model.ts";
 import { createLogger } from "../log.ts";
 import { AnalysisError, analyzeRepository } from "../pipeline/analyze.ts";
 import { defaultPlugins } from "../plugins/registry.ts";
 import { ApplicationQuery } from "../query/application-query.ts";
 import { ContractQuery } from "../query/contract-query.ts";
 import { InfrastructureQuery } from "../query/infrastructure-query.ts";
-import { MetaQuery } from "../query/meta-query.ts";
+import { MetaQuery, repositoryEdgeFact } from "../query/meta-query.ts";
 import { buildMetaGraph } from "../metagraph/build.ts";
 import { syncRepository, syncHistory, SyncUsageError, type SyncResult } from "../incremental/sync.ts";
 import { syncStatus } from "../incremental/status.ts";
@@ -16,7 +16,8 @@ import { changeSetFromGit } from "../incremental/git.ts";
 import { installHooks, uninstallHooks, hookStatus, type HookMode } from "../incremental/hooks.ts";
 import { discoverRepository, repositoryRoot } from "../pipeline/discovery.ts";
 import { loadConfig as loadRepoConfig } from "../pipeline/config.ts";
-import { discoverRepositories, registerRepository } from "../metagraph/catalog.ts";
+import { CatalogPathConflict, catalogStatus, registerRepository } from "../metagraph/catalog.ts";
+import { discoverRepositoryCandidates, staleCatalogEntries } from "../metagraph/discover.ts";
 import { exportAnalysis, exportMetaGraph } from "../export/export.ts";
 import { AnalysisGraph, type AnalysisScope } from "../analysis/graph.ts";
 import { propagate, type ImpactOptions, type ImpactResult } from "../analysis/impact.ts";
@@ -27,7 +28,7 @@ import { CYCLE_KINDS, findCycleSet, findOrphans, type CycleKind } from "../analy
 import { loadPolicies, SEVERITIES, type PolicySet, type Severity as RuleSeverity } from "../governance/policy.ts";
 import { evaluate, governanceDiff, snapshotSet, type GovernanceResult, type Violation } from "../governance/evaluate.ts";
 import { API_CHANGE_KINDS, apiImpact, messageImpact, repositoryImpact, serviceImpact } from "../analysis/views.ts";
-import { copyFileSync, existsSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
 import { GraphQuery } from "../query/graph-query.ts";
 import { loadEnterpriseConfig, type EnterpriseConfig } from "../enterprise/config.ts";
 import { buildEnterpriseModel, ownerOf, posture, type EnterpriseModel, type SecurityFinding } from "../enterprise/model.ts";
@@ -135,13 +136,15 @@ Infrastructure graph (static, declared state only)
   unresolved-infrastructure      Unresolved infrastructure relationships
 
 MetaGraph (multi-repository; repository graphs stay authoritative for their own facts)
+  discover <dir> [--depth N] [--dry-run] [--no-analyze] [--no-build] [--force]
+                                 Find repositories under <dir> (.git, vogoban.json or catalog-info.yaml),
+                                 register them, analyze new or changed ones and rebuild the MetaGraph
   register <path> [--no-semantic]  Add a repository to the catalog without analyzing it
   analyze-repo <repo>            Analyze one catalog repository from its registered path
   analyze-all                    Analyze every catalog repository (failures do not stop the others)
   repositories                   Catalog: identity, analyzed commit, graph version, status (READY/STALE/FAILED/...)
   repository <repo>              Catalog entry, roles, analysis runs and cross-repository connections
-  metagraph [build|stats|snapshots|unresolved|conflicts|export|discover] [--force] [--format F --out P]
-  metagraph discover <directory> [--max-depth N] [--analyze] [--build]
+  metagraph [build|stats|snapshots|unresolved|conflicts|export] [--force] [--format F --out P]
   connections [repo]             Cross-repository relationships with evidence and environment
   providers <api|"VERB /path">   (alias api-providers) Provider repositories, APIs and implementing endpoints
   api-consumers <api|"VERB /path">  Cross-repository and same-repository consumers
@@ -371,12 +374,12 @@ const { values: opts, positionals } = parseCli(() => parseArgs({
     quiet: { type: "boolean", default: false },
     untrusted: { type: "boolean", default: false },
     "trust-repository": { type: "boolean", default: false },
+    "dry-run": { type: "boolean", default: false },
+    "no-analyze": { type: "boolean", default: false },
+    "no-build": { type: "boolean", default: false },
     "strict-incremental": { type: "boolean", default: false },
     "hook-mode": { type: "string" },
     open: { type: "boolean", default: false },
-    "max-depth": { type: "string" },
-    analyze: { type: "boolean", default: false },
-    build: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 }));
@@ -387,12 +390,13 @@ if (opts.version) {
 
 // `graph <sub>` is sugar for the flat incremental commands, matching the Phase 14 spec
 // while keeping the existing single-token CLI convention.
+const STORE_CREATING_COMMANDS = new Set(["graph", "discover", "analyze", "analyze-repo", "analyze-all", "register", "restore", "sync", "sync-status", "sync-changes", "sync-history", "hooks", "privacy", "diagnostics", "ai-config", "ai-tools", "mcp-tools", "ai-audit", "validate-rules", "validate-enterprise", "policies"]);
 const GRAPH_SUBCOMMANDS: Record<string, string> = { sync: "sync", status: "sync-status", changes: "sync-changes", diff: "diff", history: "sync-history" };
 if (positionals[0] === "graph" && positionals[1] && GRAPH_SUBCOMMANDS[positionals[1]]) {
   positionals.splice(0, 2, GRAPH_SUBCOMMANDS[positionals[1]]!);
 }
 const [command, ...args] = positionals;
-if (!command || opts.help) {
+if (!command || command === "help" || opts.help) {
   console.log(HELP);
   process.exit(command || opts.help ? 0 : 1);
 }
@@ -429,6 +433,12 @@ function renderSync(r: SyncResult): string {
   }
   return lines.filter(Boolean).join("\n");
 }
+const compilationWarning = (store: GraphStore, repositoryId: string) => {
+  const errors = store.findDiagnostics({ repositoryId }).filter((d) => d.code === "compilation-errors");
+  if (!errors.length) return "";
+  const unrestored = errors.filter((d) => d.message.includes("not restored")).length;
+  return `; warning: ${errors.length} .NET project(s) compiled with errors${unrestored ? ` (${unrestored} not restored: run dotnet restore)` : ""}; unbound symbols can hide SDK and messaging facts (see vogoban stats; build sibling ProjectReferences first)`;
+};
 const intOpt = (v: string | undefined, fallback: number) => (v ? Number.parseInt(v, 10) : fallback);
 const types = (): RelationshipType[] | undefined => {
   if (!opts.type) return undefined;
@@ -456,34 +466,13 @@ function repoId(store: GraphStore, explicit?: string): string | undefined {
   return repo.id;
 }
 
-function one(query: GraphQuery, ref: string | undefined, store: GraphStore, expectedKinds?: EntityKind[]): Entity {
+function one(query: GraphQuery, ref: string | undefined, store: GraphStore): Entity {
   if (!ref) throw new CliError("an entity reference is required (id, symbol key, qualified name, or name)");
-  const filterKinds = opts.kind ? kinds() : expectedKinds;
-  let matches = query.resolve(ref, { kinds: filterKinds, repositoryId: opts.repo ? repoId(store) : undefined });
+  const matches = query.resolve(ref, { kinds: kinds(), repositoryId: opts.repo ? repoId(store) : undefined });
   if (matches.length === 1) return matches[0]!;
-  if (matches.length === 0) {
-    if (filterKinds && !opts.kind) {
-      matches = query.resolve(ref, { kinds: kinds(), repositoryId: opts.repo ? repoId(store) : undefined });
-      if (matches.length === 1) return matches[0]!;
-    }
-    if (matches.length === 0) throw new CliError(`no entity matches '${ref}'`);
-  }
+  if (matches.length === 0) throw new CliError(`no entity matches '${ref}'`);
   const exact = matches.filter((m) => m.qualifiedName === ref || m.symbolKey === ref);
   if (exact.length === 1) return exact[0]!;
-  if (exact.length > 1 && !opts.kind && expectedKinds?.length) {
-    const exactExpected = exact.filter((m) => expectedKinds.includes(m.kind));
-    if (exactExpected.length === 1) return exactExpected[0]!;
-  }
-  if (!opts.kind && expectedKinds?.length) {
-    const expectedMatches = matches.filter((m) => expectedKinds.includes(m.kind));
-    if (expectedMatches.length === 1) return expectedMatches[0]!;
-    if (expectedMatches.length > 1) {
-      throw new CliError(
-        `'${ref}' is ambiguous (${expectedMatches.length} matches of expected kind ${expectedKinds.join(", ")}):\n${expectedMatches.slice(0, 20).map((m) => `  ${m.id}  ${label(m)}  ${where(m)}`).join("\n")}`,
-        expectedMatches.map((m) => ({ id: m.id, kind: m.kind, qualifiedName: m.qualifiedName })),
-      );
-    }
-  }
   throw new CliError(
     `'${ref}' is ambiguous (${matches.length} matches); use an id or --kind:\n${matches.slice(0, 20).map((m) => `  ${m.id}  ${label(m)}  ${where(m)}`).join("\n")}`,
     matches.map((m) => ({ id: m.id, kind: m.kind, qualifiedName: m.qualifiedName })),
@@ -587,6 +576,11 @@ async function main() {
   }
   if (localTarget) loadWorkspaceConfig(localTarget);
   const dbPath = opts.db ?? process.env.VOGOBAN_DB ?? (localTarget ? join(localTarget, ".vogoban/graph.db") : ".vogoban/graph.db");
+  if (!STORE_CREATING_COMMANDS.has(command ?? "") && !existsSync(dbPath)) {
+    const known = HELP.split(/[\s|(),]+/).includes(command!);
+    if (!known) throw new CliError(`unknown command '${command}'\n\n${HELP}`);
+    throw new CliError(`no graph store at ${dbPath}. Analyze a repository first (vogoban analyze <path>), or pass --db with the path of an existing store.`);
+  }
   const store = new SqliteGraphStore(dbPath);
   const query = new GraphQuery(store);
   const appQuery = new ApplicationQuery(store);
@@ -617,21 +611,16 @@ async function main() {
     return new AnalysisGraph(store, { scope, repositoryId: opts.repo ? catalogRef(opts.repo).repositoryId : undefined, environment: opts.env });
   };
   const impactOptions = (mode: ImpactOptions["mode"]): ImpactOptions => ({ mode, maxDepth: depthOpt(mode === "impact" ? 6 : 3), maxNodes: intOpt(opts["max-nodes"], 2000), expandSeeds: true });
-  const target = (ref: string | undefined, expectedKinds?: EntityKind[]): Entity => {
+  const target = (ref: string | undefined): Entity => {
     if (!ref) throw new CliError("an entity reference is required");
-    const filterKinds = opts.kind ? kinds() : expectedKinds;
-    const metaEntities = store.findMetaEntities({ ids: [ref], kinds: filterKinds });
-    let meta = metaEntities[0] ?? store.findMetaEntities({ nameLike: ref, kinds: filterKinds }).filter((e) => e.name === ref || e.qualifiedName === ref)[0];
-    if (!meta && !opts.kind && expectedKinds?.length) {
-      meta = store.findMetaEntities({ ids: [ref] })[0] ?? store.findMetaEntities({ nameLike: ref }).filter((e) => e.name === ref || e.qualifiedName === ref)[0];
-    }
-    if (meta && (!expectedKinds || expectedKinds.includes(meta.kind) || opts.kind)) return meta;
+    const meta = store.findMetaEntities({ ids: [ref] })[0] ?? store.findMetaEntities({ nameLike: ref }).filter((e) => e.name === ref || e.qualifiedName === ref)[0];
+    if (meta) return meta;
     const repo = store.getCatalog(ref);
-    if (repo && (!expectedKinds || expectedKinds.includes("Repository") || opts.kind)) {
+    if (repo) {
       const entity = store.findEntities({ kinds: ["Repository"], repositoryId: repo.repositoryId })[0];
       if (entity) return entity;
     }
-    return one(query, ref, store, expectedKinds);
+    return one(query, ref, store);
   };
   const stepText = (s: GraphPath["steps"][number]) => {
     const rel = `${s.relationship.type}${s.relationship.graphScope === "meta" ? "@meta" : ""}${s.relationship.evidence === "INFERRED" || s.relationship.evidence === "HEURISTIC" ? "?" : ""}${s.relationship.environment ? ` env=${s.relationship.environment}` : ""}`;
@@ -682,7 +671,8 @@ async function main() {
   let policyCache: PolicySet | null = null;
   const policySet = (strict = true): PolicySet => {
     if (policyCache) return policyCache;
-    const paths = (opts.policy ?? process.env.VOGOBAN_POLICIES ?? "vogoban-policies").split(",").map((p) => p.trim()).filter(Boolean);
+    const explicit = opts.policy ?? process.env.VOGOBAN_POLICIES;
+    const paths = explicit ? explicit.split(",").map((p) => p.trim()).filter(Boolean) : existsSync("vogoban-policies") ? ["vogoban-policies"] : [];
     try {
       policyCache = loadPolicies(paths);
     } catch (error) {
@@ -1045,7 +1035,7 @@ async function main() {
             `  ${Object.entries(contractGraph).map(([k, v]) => `${k} ${v}`).join("  · ") || "No contract entities"}`,
             `  ${Object.entries(infrastructureGraph).map(([k, v]) => `${k} ${v}`).join("  · ") || "No declared infrastructure entities"}`,
             "",
-            "Next\n  vogoban graph\n  vogoban diagnostics\n  vogoban impact <entity>",
+            "Next\n  vogoban graph\n  vogoban stats\n  vogoban impact <entity>",
           ].join("\n"),
           { repository: repository ? { id: repository.id, name: repository.name, root: repository.rootPath } : { id: repositoryId, name: repositoryId, root: path }, run, graph: { database: dbPath, summary: Object.fromEntries(summary(stats).map(([k, v]) => [k.trim(), v])), stats }, applicationGraph, contractGraph, infrastructureGraph },
         );
@@ -1170,7 +1160,7 @@ async function main() {
         break;
       }
       case "project": {
-        const entity = one(query, args[0], store, ["Project"]);
+        const entity = one(query, args[0], store);
         if (entity.kind !== "Project") throw new CliError(`${label(entity)} is not a project`);
         const out = query.outgoing(entity.id);
         const incoming = query.incoming(entity.id, ["PROJECT_REFERENCES"]);
@@ -1584,7 +1574,7 @@ async function main() {
         break;
       }
       case "api-impact": {
-        const op = target(args[0], ["ApiOperation", "Api"]);
+        const op = target(args[0]);
         if (op.kind !== "ApiOperation") throw new CliError(`${label(op)} is not an ApiOperation`);
         if (opts.change && !API_CHANGE_KINDS.includes(opts.change)) throw new CliError(`--change must be one of ${API_CHANGE_KINDS.join(", ")}`);
         const r = apiImpact(analysisGraph(), op, opts.change ?? null, impactOptions("impact"));
@@ -1605,7 +1595,7 @@ async function main() {
         break;
       }
       case "message-impact": {
-        const m = target(args[0], ["Message", "SharedContract"]);
+        const m = target(args[0]);
         if (!["Message", "SharedContract"].includes(m.kind)) throw new CliError(`${label(m)} is not a Message or SharedContract`);
         const r = messageImpact(analysisGraph(), m, impactOptions("impact"));
         const side = (l: typeof r.producerSide) => l.slice(0, rowLimit()).map((x) => `  ${x.repository ?? "-"}: ${x.entity.qualifiedName ?? x.entity.name} [${x.relationship.type}/${x.relationship.evidence}] apps=${x.applications.map((a) => a.name).join(",") || "-"}`);
@@ -1621,7 +1611,7 @@ async function main() {
         break;
       }
       case "service-impact": {
-        const app = target(args[0], ["Application"]);
+        const app = target(args[0]);
         if (app.kind !== "Application") throw new CliError(`${label(app)} is not an Application`);
         const r = serviceImpact(analysisGraph(), app, impactOptions("impact"));
         await maybeExport("service-impact", r, [...r.upstream.impacted.map((i) => ({ direction: "upstream", ...impactRow(i) })), ...r.downstream.impacted.map((i) => ({ direction: "downstream", ...impactRow(i) }))]);
@@ -1765,6 +1755,7 @@ async function main() {
         await maybeExport(command, { ...result, violations: list }, list.map(violationRow));
         output(() => command === "governance"
           ? [
+              policySet().policies.length ? "" : "No policies configured: add YAML policies to ./vogoban-policies or pass --policy <file|dir>.",
               `Governance ${result.summary.outcome}  (${result.summary.counted} counted violations; fail-on ${severityOpt(opts["fail-on"], "ERROR")}, warn-on ${severityOpt(opts["warn-on"], "WARNING")})`,
               snapshotText(result),
               result.baseline ? `baseline ${result.baseline.name} (${result.baseline.createdAt}): ${list.filter((v) => v.baseline === "NEW").length} new, ${list.filter((v) => v.baseline === "BASELINED").length} baselined` : "",
@@ -2150,9 +2141,66 @@ async function main() {
         output(() => [`Ownership history of ${e.kind} ${e.qualifiedName ?? e.name} (${rows.length} snapshots)`, table(rows.map((r) => [r.snapshot, r.commit?.slice(0, 12) ?? "-", r.present ? (r.state ?? "-") : "(absent)", r.owners.join(",") || "-", r.change]), ["snapshot", "commit", "ownership", "owners", "change"]), ...rows.filter((r) => r.change !== "unchanged").map((r) => `  ${r.commit?.slice(0, 12) ?? r.snapshot}: ${r.evidence.join(" | ") || "(no ownership evidence)"}`)].join("\n"), rows);
         break;
       }
+      case "discover": {
+        const directory = args[0] ?? ".";
+        if (!existsSync(directory)) throw new CliError(`discover: directory not found: ${directory}`);
+        const candidates = discoverRepositoryCandidates(directory, intOpt(opts.depth, 4));
+        const roots = new Set(candidates.filter((c) => !c.skipped).map((c) => c.root));
+        const stale = staleCatalogEntries(directory, store.listCatalog(), roots);
+        const results: { path: string; marker: string; repository: string | null; action: string; detail: string }[] = [];
+        for (const candidate of candidates) {
+          if (candidate.skipped) {
+            results.push({ path: candidate.path, marker: candidate.marker, repository: null, action: "SKIPPED", detail: candidate.skipped });
+            continue;
+          }
+          if (opts["dry-run"]) {
+            const known = store.listCatalog().find((e) => e.localPath === candidate.root);
+            results.push({ path: candidate.root, marker: candidate.marker, repository: known?.name ?? null, action: known ? "REGISTERED" : "NEW", detail: known ? catalogStatus(known).status : "would register and analyze" });
+            continue;
+          }
+          const isNew = !store.listCatalog().some((e) => e.localPath === candidate.root);
+          let entry: CatalogEntry;
+          try {
+            entry = registerRepository(store, candidate.root, !opts["no-semantic"], opts.force);
+          } catch (error) {
+            if (!(error instanceof CatalogPathConflict)) throw error;
+            results.push({ path: candidate.root, marker: candidate.marker, repository: null, action: "CONFLICT", detail: error.message });
+            continue;
+          }
+          const current = catalogStatus(store.getCatalog(entry.repositoryId) ?? entry);
+          if (opts["no-analyze"]) {
+            results.push({ path: candidate.root, marker: candidate.marker, repository: entry.name, action: isNew ? "REGISTERED" : "KNOWN", detail: current.status });
+            continue;
+          }
+          if (!opts.force && current.status === "READY" && current.currentCommit) {
+            results.push({ path: candidate.root, marker: candidate.marker, repository: entry.name, action: "UNCHANGED", detail: `analyzed at ${current.currentCommit.slice(0, 12)}` });
+            continue;
+          }
+          try {
+            const { run } = await analyzeRepository(candidate.root, store, defaultPlugins(), { semantic: entry.semantic }, log);
+            results.push({ path: candidate.root, marker: candidate.marker, repository: entry.name, action: "ANALYZED", detail: `entities=${run.stats.entities} relationships=${run.stats.relationships} ${run.stats.durationMs}ms${compilationWarning(store, entry.repositoryId)}` });
+          } catch (error) {
+            results.push({ path: candidate.root, marker: candidate.marker, repository: entry.name, action: "FAILED", detail: error instanceof Error ? error.message : String(error) });
+          }
+        }
+        const build = opts["dry-run"] || opts["no-build"] || opts["no-analyze"] || !roots.size ? null : buildMetaGraph(store, log, opts.force);
+        output(() => [
+          results.length ? table(results.map((r) => [r.repository ?? "-", r.action, r.marker, r.path, r.detail]), ["repository", "action", "marker", "path", "detail"]) : `No repositories found under ${directory} (looked for .git, vogoban.json and catalog-info.yaml up to depth ${intOpt(opts.depth, 4)}).`,
+          ...stale.map((e) => `stale catalog entry: ${e.name} (${e.localPath}) ${e.reason}`),
+          build ? `MetaGraph snapshot ${build.snapshot.id}: ${build.snapshot.repositories.length} repositories, ${Object.values(build.snapshot.categories).reduce((n, c) => n + c.relationships, 0)} relationships, ${Object.values(build.snapshot.categories).reduce((n, c) => n + c.unresolved, 0)} unresolved, ${Object.values(build.snapshot.categories).reduce((n, c) => n + c.conflicts, 0)} conflicts` : opts["dry-run"] ? "Dry run: nothing was registered, analyzed or built." : !roots.size ? "MetaGraph not built: no repositories to include." : "MetaGraph not rebuilt (run vogoban metagraph build).",
+        ].join("\n"), { repositories: results, stale, metagraph: build ? { snapshot: build.snapshot.id, excluded: build.excluded } : null });
+        if (results.some((r) => r.action === "FAILED" || r.action === "CONFLICT")) process.exitCode = 1;
+        break;
+      }
       case "register": {
         if (!args[0]) throw new CliError("register requires a path");
-        const entry = registerRepository(store, args[0], !opts["no-semantic"]);
+        if (!existsSync(args[0]) || !statSync(args[0]).isDirectory()) throw new CliError(`register: not a directory: ${args[0]}`);
+        let entry: CatalogEntry;
+        try {
+          entry = registerRepository(store, args[0], !opts["no-semantic"], opts.force);
+        } catch (error) {
+          throw error instanceof CatalogPathConflict ? new CliError(error.message) : error;
+        }
         output(() => `Registered ${entry.name} (${entry.repositoryId}) identity=${entry.identity} status=${entry.status}`, entry);
         break;
       }
@@ -2167,12 +2215,13 @@ async function main() {
           }
           try {
             const { run } = await analyzeRepository(entry.localPath, store, defaultPlugins(), { semantic: entry.semantic }, log);
-            results.push({ repository: entry.name, status: "READY", commit: run.commit, detail: `entities=${run.stats.entities} relationships=${run.stats.relationships} ${run.stats.durationMs}ms` });
+            results.push({ repository: entry.name, status: "READY", commit: run.commit, detail: `entities=${run.stats.entities} relationships=${run.stats.relationships} ${run.stats.durationMs}ms${compilationWarning(store, entry.repositoryId)}` });
           } catch (error) {
             results.push({ repository: entry.name, status: "FAILED", commit: null, detail: error instanceof Error ? error.message : String(error) });
           }
         }
         output(() => table(results.map((r) => [r.repository, r.status, r.commit?.slice(0, 12) ?? "-", r.detail]), ["repository", "status", "commit", "detail"]), results);
+        if (results.some((r) => r.status === "FAILED")) process.exitCode = 1;
         break;
       }
       case "repositories": {
@@ -2233,72 +2282,6 @@ async function main() {
           if (!opts.out) throw new CliError("--out is required");
           const counts = await exportMetaGraph(store, format, opts.out);
           output(() => `Exported MetaGraph ${format} to ${opts.out}: ${Object.entries(counts).map(([k, n]) => `${k}=${n}`).join(" ")}`, counts);
-        } else if (sub === "discover") {
-          const targetDir = args[1];
-          if (!targetDir) throw new CliError("metagraph discover requires a directory path");
-          const maxDepth = intOpt(opts["max-depth"], 3);
-          const repoDirs = discoverRepositories(targetDir, maxDepth);
-          const existingCatalog = store.listCatalog();
-          const existingPaths = new Set(existingCatalog.map((c) => c.localPath ? resolve(c.localPath) : ""));
-
-          const registeredList: { name: string; path: string; status: "new" | "existing"; repositoryId: string }[] = [];
-          for (const dir of repoDirs) {
-            const isExisting = existingPaths.has(resolve(dir));
-            const entry = registerRepository(store, dir, !opts["no-semantic"]);
-            registeredList.push({
-              name: entry.name,
-              path: dir,
-              status: isExisting ? "existing" : "new",
-              repositoryId: entry.repositoryId,
-            });
-          }
-
-          let analysisResults: { repository: string; status: string; commit: string | null; detail: string }[] | undefined;
-          if (opts.analyze) {
-            analysisResults = [];
-            for (const item of registeredList) {
-              const entry = store.getCatalog(item.repositoryId);
-              if (!entry || !entry.localPath || !existsSync(entry.localPath)) {
-                analysisResults.push({ repository: item.name, status: "UNAVAILABLE", commit: entry?.analyzedCommit ?? null, detail: `path not available: ${entry?.localPath ?? "-"}` });
-                continue;
-              }
-              try {
-                const { run } = await analyzeRepository(entry.localPath, store, defaultPlugins(), { semantic: entry.semantic }, log);
-                analysisResults.push({ repository: entry.name, status: "READY", commit: run.commit, detail: `entities=${run.stats.entities} relationships=${run.stats.relationships} ${run.stats.durationMs}ms` });
-              } catch (error) {
-                analysisResults.push({ repository: entry.name, status: "FAILED", commit: null, detail: error instanceof Error ? error.message : String(error) });
-              }
-            }
-          }
-
-          let buildResult: { id: string; repositories: number } | undefined;
-          if (opts.build) {
-            const { snapshot } = buildMetaGraph(store, log, true);
-            buildResult = { id: snapshot.id, repositories: snapshot.repositories.length };
-          }
-
-          const summary = {
-            baseDir: resolve(targetDir),
-            maxDepth,
-            discovered: repoDirs.length,
-            newlyRegistered: registeredList.filter((r) => r.status === "new").length,
-            existing: registeredList.filter((r) => r.status === "existing").length,
-            repositories: registeredList,
-            analysis: analysisResults,
-            build: buildResult,
-          };
-
-          output(() => [
-            `Discovered ${summary.discovered} repositories under ${summary.baseDir} (depth: ${maxDepth})`,
-            `  newly registered: ${summary.newlyRegistered}, existing: ${summary.existing}`,
-            ...(registeredList.length
-              ? [table(registeredList.map((r) => [r.name, r.status, r.path]), ["repository", "status", "path"])]
-              : ["  No git repositories found."]),
-            ...(analysisResults?.length
-              ? ["\nAnalysis results:", table(analysisResults.map((r) => [r.repository, r.status, r.commit?.slice(0, 12) ?? "-", r.detail]), ["repository", "status", "commit", "detail"])]
-              : []),
-            ...(buildResult ? [`\nMetaGraph build snapshot: ${buildResult.id} (${buildResult.repositories} repositories)`] : []),
-          ].join("\n"), summary);
         } else throw new CliError(`unknown metagraph subcommand '${sub}'`);
         break;
       }
@@ -2358,7 +2341,7 @@ async function main() {
         const t = metaQuery.topology(entry.repositoryId, opts.reverse, intOpt(opts.depth, 3), opts.env);
         output(() => [
           `${entry.name} (${opts.reverse ? "upstream" : "downstream"})`,
-          ...t.steps.map((s) => `${"  ".repeat(s.depth)}${repoName(s.repository)}  via ${s.via.type} from ${repoName(s.from)}  ${metaRelLine(s.via)}`),
+          ...t.steps.map((s) => `${"  ".repeat(s.depth)}${repositoryEdgeFact(s.via.type, repoName(s.via.sourceRepositoryId), repoName(s.via.targetRepositoryId))} (${s.via.type})  ${metaRelLine(s.via)}`),
           ...t.external.map((r) => `  external ${t.externalEntities.get(r.targetId)?.name ?? r.targetId} (${r.type})  ${metaRelLine(r)}`),
         ].join("\n"), t);
         break;
@@ -2526,12 +2509,15 @@ async function main() {
         if (!existsSync(from)) throw new CliError(`backup not found: ${from}`);
         const target = opts.db ?? process.env.VOGOBAN_DB ?? ".vogoban/graph.db";
         if (target.startsWith("postgres")) throw new CliError("restore targets a local sqlite store; set --db to a file path");
+        if (realpathSync(from) === (existsSync(target) ? realpathSync(target) : resolve(target))) throw new CliError(`backup and target are the same file: ${from}. Pass --db with the store to restore into.`);
         const check = new SqliteGraphStore(from);
         check.stats();
         check.close();
         store.close();
-        for (const suffix of ["", "-wal", "-shm"]) rmSync(`${target}${suffix}`, { force: true });
-        copyFileSync(from, target);
+        const staged = `${target}.restore-${process.pid}`;
+        copyFileSync(from, staged);
+        for (const suffix of ["-wal", "-shm"]) rmSync(`${target}${suffix}`, { force: true });
+        renameSync(staged, target);
         output(() => `Restored ${target} from ${from}. Graph, MetaGraph, analysis and local MCP use the restored store immediately.`, { target, from });
         return;
       }

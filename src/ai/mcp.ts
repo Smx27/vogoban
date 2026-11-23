@@ -143,27 +143,34 @@ export class McpServer {
   serve(): Promise<void> {
     const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
     const send = (msg: unknown) => process.stdout.write(`${JSON.stringify(msg)}\n`);
+    const respond = async (req: RpcRequest): Promise<unknown> => {
+      if (!req || typeof req !== "object" || typeof req.method !== "string") return { jsonrpc: "2.0", id: req && typeof req === "object" && req.id !== undefined ? req.id : null, error: { code: -32600, message: "invalid request" } };
+      const notification = req.id === undefined || req.id === null;
+      try {
+        const result = await this.handle(req);
+        return notification ? undefined : { jsonrpc: "2.0", id: req.id, result };
+      } catch (error) {
+        if (notification) return undefined;
+        const code = error instanceof RpcError ? error.code : -32603;
+        return { jsonrpc: "2.0", id: req.id, error: { code, message: error instanceof Error ? error.message : String(error) } };
+      }
+    };
     rl.on("line", async (line) => {
       if (!line.trim()) return;
-      let req: RpcRequest;
+      let req: RpcRequest | RpcRequest[];
       try {
         req = JSON.parse(line);
       } catch {
         return send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
       }
-      if (!req || typeof req.method !== "string") {
-        if (req && req.id !== undefined) send({ jsonrpc: "2.0", id: req.id, error: { code: -32600, message: "invalid request" } });
+      if (Array.isArray(req)) {
+        if (!req.length) return send({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "invalid request: empty batch" } });
+        const replies = (await Promise.all(req.map(respond))).filter((r) => r !== undefined);
+        if (replies.length) send(replies);
         return;
       }
-      const notification = req.id === undefined || req.id === null;
-      try {
-        const result = await this.handle(req);
-        if (!notification) send({ jsonrpc: "2.0", id: req.id, result });
-      } catch (error) {
-        if (notification) return;
-        const code = error instanceof RpcError ? error.code : -32603;
-        send({ jsonrpc: "2.0", id: req.id, error: { code, message: error instanceof Error ? error.message : String(error) } });
-      }
+      const reply = await respond(req);
+      if (reply !== undefined) send(reply);
     });
     return new Promise((resolve) => rl.on("close", resolve));
   }

@@ -5,7 +5,7 @@ import { environmentEntity, escapeRegExp, infraDiagnostic, infraEntity, infraPro
 import { configurationReferenceIndex } from "./resolver-shared.ts";
 
 const ID = "infrastructure.app-configuration";
-const VERSION = "1";
+const VERSION = "2";
 
 export function stripJsonComments(text: string): string {
   let out = "";
@@ -50,7 +50,7 @@ export const appConfigurationPlugin: AnalysisPlugin = {
     const repoId = ctx.repository.id;
     let count = 0;
     for (const file of ctx.files.filter((f) => /(^|\/)appsettings(\.[\w-]+)?\.json$/i.test(f.path))) {
-      const project = projects.filter((p) => file.path.startsWith(p.dir ? `${p.dir}/` : "")).sort((a, b) => b.dir.length - a.dir.length)[0];
+      const project = projects.filter((p) => p.dir === "." || !p.dir || file.path.startsWith(`${p.dir}/`)).sort((a, b) => b.dir.length - a.dir.length)[0];
       if (!project) continue;
       const ownerId = apps?.byProject.get(project.entityId)?.entityId ?? project.entityId;
       const envName = /appsettings\.([\w-]+)\.json$/i.exec(file.path)?.[1] ?? null;

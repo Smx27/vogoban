@@ -22,6 +22,7 @@ import { helmPlugin } from "../infrastructure/helm-plugin.ts";
 import { kubernetesPlugin } from "../infrastructure/kubernetes-plugin.ts";
 import { azurePipelinesPlugin } from "../infrastructure/pipeline-plugin.ts";
 import { infrastructureResolverPlugin } from "../infrastructure/resolver.ts";
+import { backstagePlugin } from "../ownership/backstage-plugin.ts";
 import { codeOwnersPlugin } from "../ownership/codeowners-plugin.ts";
 import { angularPlugin } from "../frontend/angular.ts";
 import { frontendHttpPlugin } from "../frontend/http.ts";
@@ -44,7 +45,7 @@ export const ANALYZER_GROUPS = [
   { id: "azure", label: "Azure", description: "Azure infrastructure, Functions, SDKs and Aspire. C# and TypeScript extraction require the .NET and frontend groups respectively." },
   { id: "infrastructure", label: "Infrastructure", description: "Docker, pipelines, Helm, Kubernetes and application configuration." },
   { id: "contracts", label: "Contracts", description: "OpenAPI contracts and API/messaging resolution using facts from the selected language groups." },
-  { id: "ownership", label: "Ownership", description: "CODEOWNERS ownership rules." },
+  { id: "ownership", label: "Ownership", description: "CODEOWNERS and Backstage catalog-info.yaml ownership." },
 ] as const;
 
 const GROUP_PLUGINS: Record<(typeof ANALYZER_GROUPS)[number]["id"], readonly Plugin[]> = {
@@ -53,7 +54,7 @@ const GROUP_PLUGINS: Record<(typeof ANALYZER_GROUPS)[number]["id"], readonly Plu
   azure: [azureFunctionsPlugin, azureSdkPlugin, azureAspirePlugin, azureTypeScriptPlugin, azureInfrastructurePlugin, azureResolverPlugin],
   infrastructure: [dockerPlugin, azurePipelinesPlugin, helmPlugin, kubernetesPlugin, appConfigurationPlugin, infrastructureResolverPlugin],
   contracts: [openApiPlugin, apiResolverPlugin, messageResolverPlugin],
-  ownership: [codeOwnersPlugin],
+  ownership: [codeOwnersPlugin, backstagePlugin],
 };
 
 export function selectAnalyzerPlugins(plugins: readonly Plugin[], groupIds?: readonly string[]): Plugin[] {
@@ -107,5 +108,6 @@ export function defaultPlugins(): Plugin[] {
     infrastructureResolverPlugin,
     azureResolverPlugin,
     codeOwnersPlugin,
+    backstagePlugin,
   ];
 }

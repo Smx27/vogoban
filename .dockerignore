@@ -1,0 +1,8 @@
+node_modules
+.vogoban
+.vogoban-platform
+semantic/**/bin
+semantic/**/obj
+*.db
+*.db-*
+.git

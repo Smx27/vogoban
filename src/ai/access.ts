@@ -80,6 +80,14 @@ export class GraphAccess {
     return entry.repositoryId;
   }
 
+  requireMetaGraph() {
+    if (this.scope.graph === "repository") throw new ScopeError("MetaGraph facts are outside the permitted scope (graph=repository)");
+  }
+
+  private metaEntities(filter: Parameters<GraphStore["findMetaEntities"]>[0]): Entity[] {
+    return this.scope.graph === "repository" ? [] : this.store.findMetaEntities(filter);
+  }
+
   allowed(repositoryId: string | null | undefined): boolean {
     return !repositoryId || !this.scope.repositories || this.scope.repositories.includes(repositoryId);
   }
@@ -189,10 +197,10 @@ export class GraphAccess {
   private lookup(ref: string): { list: Entity[]; method: string } {
     const alias = this.options.aliases[ref];
     if (alias) {
-      const e = this.store.getEntity(alias) ?? this.store.findMetaEntities({ ids: [alias] })[0];
+      const e = this.store.getEntity(alias) ?? this.metaEntities({ ids: [alias] })[0];
       if (e) return { list: [e], method: "alias" };
     }
-    const byId = this.store.getEntity(ref) ?? this.store.findMetaEntities({ ids: [ref] })[0];
+    const byId = this.store.getEntity(ref) ?? this.metaEntities({ ids: [ref] })[0];
     if (byId) return { list: [byId], method: "id" };
     const catalog = this.store.getCatalog(ref);
     if (catalog) {
@@ -206,7 +214,7 @@ export class GraphAccess {
     const bySymbol = this.store.findEntities({ symbolKey: ref, limit: 50 });
     if (bySymbol.length) return { list: bySymbol, method: "symbol-key" };
     const byQualified = this.store.findEntities({ qualifiedName: ref, limit: 200 });
-    const metaExact = this.store.findMetaEntities({ nameLike: ref }).filter((e) => e.name === ref || e.qualifiedName === ref);
+    const metaExact = this.metaEntities({ nameLike: ref }).filter((e) => e.name === ref || e.qualifiedName === ref);
     const like = this.store.findEntities({ nameLike: ref, limit: 5000 });
     const exact = like.filter((e) => e.name === ref || e.qualifiedName?.split("(")[0] === ref);
     const union = [...new Map([...byQualified, ...metaExact, ...exact].map((e) => [e.id, e])).values()];
@@ -239,6 +247,9 @@ export class GraphAccess {
     for (const tier of tiers) {
       const hits = inScope.filter((e) => tier.includes(e.kind));
       if (hits.length === 1) return { status: "RESOLVED", entity: hits[0]!, method: `${method}${options.kinds?.length ? ` + kind ${options.kinds.join("|")}` : ""}` };
+      const shared = hits.filter((e) => e.kind === "SharedContract");
+      if (hits.length > 1 && shared.length === 1 && hits.every((e) => e === shared[0] || (e.kind === "Message" && e.qualifiedName === shared[0]!.qualifiedName)))
+        return { status: "RESOLVED", entity: shared[0]!, method: method + " (per-repository copies collapsed into their shared contract)" };
       if (hits.length > 1) return { status: "AMBIGUOUS", candidates: hits.slice(0, 20), method };
     }
     if (!options.kinds?.length && inScope.length === 1) return { status: "RESOLVED", entity: inScope[0]!, method };

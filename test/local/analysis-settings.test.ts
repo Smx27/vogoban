@@ -94,7 +94,7 @@ describe("analysis settings consumption", () => {
     write(root, "openapi.json", JSON.stringify({ openapi: "3.0.0", info: { title: "Fixture", version: "1" }, paths: {} }));
     settings(root, { analyzers: ["ownership"], snapshots: false, semantic: false });
     const first = await analyzeRepository(root, store, defaultPlugins(), {}, log);
-    expect(first.run.pluginVersions).toEqual({ "ownership.codeowners": "1" });
+    expect(first.run.pluginVersions).toEqual({ "ownership.backstage": "1", "ownership.codeowners": "1" });
     expect(store.getCatalog(first.repositoryId)?.semantic).toBe(false);
     expect(store.findEntities({ kinds: ["OwnershipRule"] })).toHaveLength(1);
     expect(store.findEntities({ kinds: ["ContractDocument"] })).toHaveLength(0);

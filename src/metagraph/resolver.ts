@@ -64,11 +64,14 @@ export const str = (v: unknown): string | null => (typeof v === "string" && v ? 
 export const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
 export function hostOf(url: string | null): string | null {
-  if (!url) return null;
-  const m = /^[a-z][\w+.-]*:\/\/([^/:?#]*)/i.exec(url.trim());
-  return m?.[1] ? m[1].toLowerCase() : null;
+  if (!url || !/^[a-z][\w+.-]*:\/\//i.test(url.trim())) return null;
+  try {
+    return new URL(url.trim()).hostname.toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }
 
-export const isPlaceholderHost = (host: string) => /\$|\{|\}|^your|^x+$|example\.(com|org)$|^localhost$|^127\.|^0\.0\.0\.0$|^\+$|^\*$/i.test(host);
+export const isPlaceholderHost = (host: string) => /\$|\{|\}|^your|^x+$|example\.(com|org)$|(^|\.)localhost\.?$|^\[(::1|::)\]$|^127\.|^0\.0\.0\.0$|^\+$|^\*$/i.test(host);
 const PUBLIC_SUFFIX = /\.([a-z]{2}|com|net|org|io|dev|app|cloud|ai|biz|info|gov|edu|mil|int|tech|online|site|xyz|live|services)$/i;
 export const isFqdn = (host: string) => PUBLIC_SUFFIX.test(host) && !/\.(db|sqlite3?|mdf|ldf|sdf)$/i.test(host) && !/^\d+\.\d+\.\d+\.\d+$/.test(host) && !isPlaceholderHost(host);

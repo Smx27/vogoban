@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/inventory/inventory-updated.schema.json",
+  "title": "InventoryUpdatedEvent",
+  "description": "Published by inventory-service when stock levels change. Contract id inventory/inventory-updated.",
+  "type": "object",
+  "properties": {
+    "sku": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "location": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "sku",
+    "quantity",
+    "location",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

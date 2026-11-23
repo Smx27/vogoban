@@ -243,7 +243,7 @@ function stepsFor(intent: Intent, found: Mention[], question: string, environmen
       if (kind === "Repository") return [{ tool: "get_repository_dependencies", args: { repository: a!.entity!.repository ?? a!.entity!.name, direction: "upstream", ...env }, purpose: "repositories depending on this repository (MetaGraph)" }];
       return ent ? [{ tool: "get_dependents", args: { ...ent, ...env }, purpose: "reverse dependency traversal" }] : [];
     case "DEPENDENCIES":
-      if (kind === "Repository") return [{ tool: "get_repository_dependencies", args: { repository: a!.entity!.repository ?? a!.entity!.name, direction: "downstream", ...env }, purpose: "repositories this repository depends on (MetaGraph)" }];
+      if (kind === "Repository") return [{ tool: "get_repository_dependencies", args: { repository: a!.entity!.repository ?? a!.entity!.name, direction: "downstream", ...env }, purpose: "repositories connected to this repository: contract consumers, dependencies, calls and deployments (MetaGraph)" }];
       return ent ? [{ tool: "get_dependencies", args: { ...ent, ...env }, purpose: "forward dependency traversal" }] : [];
     case "IMPACT": {
       if (!ent) return [];

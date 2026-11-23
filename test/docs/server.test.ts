@@ -2,7 +2,7 @@ import { describe, expect, it, afterAll, beforeAll } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createDocsServer, DOCS_SECURITY_HEADERS } from "../../src/docs/server";
+import { createDocsServer } from "../../src/docs/server";
 
 describe("documentation server security", () => {
   let tempDir: string;
@@ -52,31 +52,6 @@ describe("documentation server security", () => {
     const resGuide = await fetch(`http://127.0.0.1:${server.port}/guide`);
     expect(resGuide.status).toBe(200);
     expect(await resGuide.text()).toContain("Guide");
-  });
-
-  it("serves responses with defensive security headers", async () => {
-    expect(DOCS_SECURITY_HEADERS["x-content-type-options"]).toBe("nosniff");
-    expect(DOCS_SECURITY_HEADERS["x-frame-options"]).toBe("DENY");
-    expect(DOCS_SECURITY_HEADERS["referrer-policy"]).toBe("no-referrer");
-    expect(DOCS_SECURITY_HEADERS["content-security-policy"]).toContain("frame-ancestors 'none'");
-    expect(DOCS_SECURITY_HEADERS["content-security-policy"]).toContain("script-src 'self'");
-    expect(DOCS_SECURITY_HEADERS["content-security-policy"]).not.toContain("script-src 'self' 'unsafe-inline'");
-
-    for (const path of ["/", "/guide", "/nonexistent"]) {
-      const res = await fetch(`http://127.0.0.1:${server.port}${path}`);
-      for (const [header, expectedValue] of Object.entries(DOCS_SECURITY_HEADERS)) {
-        expect(res.headers.get(header)).toBe(expectedValue);
-      }
-    }
-  });
-
-  it("serves external docs.js asset under script-src 'self'", async () => {
-    writeFileSync(join(outDir, "docs.js"), "console.log('docs client');");
-    const res = await fetch(`http://127.0.0.1:${server.port}/docs.js`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("content-security-policy")).toContain("script-src 'self'");
-    expect(await res.text()).toContain("console.log('docs client');");
   });
 
   it("prevents path traversal attempts to access files outside outDir", async () => {

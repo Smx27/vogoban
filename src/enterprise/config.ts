@@ -8,7 +8,7 @@ export const CRITICALITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export const SECURITY_SEVERITIES = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export type SecuritySeverity = (typeof SECURITY_SEVERITIES)[number];
 export const BOUNDARY_KINDS = ["public", "network", "service-mesh", "environment", "organization", "third-party", "custom"] as const;
-export const OWNERSHIP_SOURCES = ["explicit", "codeowners"] as const;
+export const OWNERSHIP_SOURCES = ["explicit", "codeowners", "backstage"] as const;
 export type OwnershipSource = (typeof OWNERSHIP_SOURCES)[number];
 
 export interface OrgUnit {

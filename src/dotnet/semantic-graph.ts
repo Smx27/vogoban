@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { keys } from "../graph/identity.ts";
 import { memberPath } from "./names.ts";
 import { isRelationshipType, type EntityKind, type Metadata, type Provenance, type SourceLocation } from "../graph/model.ts";
@@ -400,9 +402,10 @@ function emitCompilationContext(ctx: AnalysisContext, project: DotnetProject, fa
   }
 
   if (facts.compilerErrors > 0) {
+    const unrestored = project.packages.length > 0 && !existsSync(join(ctx.repository.rootPath, dirname(project.path), "obj", "project.assets.json"));
     graph.diagnostic({
       repositoryId: repoId, category: "compilation", plugin: PLUGIN, file: project.path, severity: "warning", recoverable: true, code: "compilation-errors",
-      message: `${facts.compilerErrors} compiler errors in ${project.name} (${facts.frameworks.map((f) => f.targetFramework).join(", ")}; references: ${facts.referenceSources.join(", ") || "none"}); unbound symbols are recorded as unresolved references`,
+      message: `${facts.compilerErrors} compiler errors in ${project.name} (${facts.frameworks.map((f) => f.targetFramework).join(", ")}; references: ${facts.referenceSources.join(", ") || "none"}); unbound symbols are recorded as unresolved references${unrestored ? "; NuGet packages are not restored (no obj/project.assets.json): run dotnet restore for full package, SDK and messaging facts" : ""}`,
     });
     for (const d of facts.diagnostics) {
       graph.diagnostic({ repositoryId: repoId, category: "compilation", plugin: PLUGIN, file: d.file ?? project.path, severity: "info", recoverable: true, code: d.id, message: `${d.message} (line ${d.line})` });

@@ -43,7 +43,7 @@ unresolved: analyzer-limitation=3 dependent-on-unresolved-type=34 ingress-backen
 
 `vogoban unresolved` shows rows such as `INHERITS  Aspire.Hosting.IProjectMetadata … base type could not be resolved`.
 
-**Cause.** The projects declare NuGet packages but there is no restore output (`obj/project.assets.json`), so Roslyn cannot load the package assemblies. Vogoban never restores packages during local analysis. When packages are declared and restored, the same compiler errors are categorized `missing-assembly` or `unknown-symbol` instead.
+**Cause.** The projects declare NuGet packages but there is no restore output (`obj/project.assets.json`), so Roslyn cannot load the package assemblies. Vogoban never restores packages during local analysis. The `compilation-errors` diagnostic of such a project ends with `NuGet packages are not restored (no obj/project.assets.json)`, and `vogoban discover` adds `.NET project(s) not restored` to the repository's result line. When packages are declared and restored, the same compiler errors are categorized `missing-assembly` or `unknown-symbol` instead.
 
 **Solution.** Restore, then analyze again:
 

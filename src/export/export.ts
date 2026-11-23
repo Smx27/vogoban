@@ -1,5 +1,5 @@
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { GRAPH_SCHEMA_VERSION, type Entity, type Relationship } from "../graph/model.ts";
 import type { GraphStore } from "../store/store.ts";
 
@@ -48,6 +48,7 @@ export async function exportGraph(store: GraphStore, format: ExportFormat, out: 
     return counts;
   }
 
+  if (!existsSync(dirname(resolve(out)))) throw Object.assign(new Error(`output directory does not exist: ${dirname(resolve(out))}`), { code: "ENOENT", path: dirname(resolve(out)) });
   const partial = `${out}.partial-${process.pid}`;
   writeFileSync(partial, "");
   const writer = Bun.file(partial).writer();

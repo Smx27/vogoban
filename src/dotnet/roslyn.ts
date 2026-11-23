@@ -210,10 +210,21 @@ export function createRoslynPlugin(backend: SemanticBackend = roslynBackend): An
 
       if (!unavailable) {
         const cacheKeys = projectCacheKeys(ctx, projects, backend.version);
+        const uncached = new Set(projects.filter((p) => p.externalProjectReferences?.length).map((p) => p.entityId));
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const p of projects) {
+            if (!uncached.has(p.entityId) && p.projectReferences.some((id) => uncached.has(id))) {
+              uncached.add(p.entityId);
+              changed = true;
+            }
+          }
+        }
         const scope = (p: DotnetProject) => `semantic|${ctx.repository.id}|${p.entityId}`;
         const misses = new Set<string>();
         for (const p of projects) {
-          const hit = ctx.cache.get(scope(p), cacheKeys.get(p.entityId)!);
+          const hit = uncached.has(p.entityId) ? null : ctx.cache.get(scope(p), cacheKeys.get(p.entityId)!);
           if (hit) {
             const facts = JSON.parse(hit) as SemanticProjectFacts;
             if (redactSecretValues(facts)) ctx.cache.put(scope(p), cacheKeys.get(p.entityId)!, JSON.stringify(facts));
@@ -236,7 +247,7 @@ export function createRoslynPlugin(backend: SemanticBackend = roslynBackend): An
             redactSecretValues(facts);
             results.set(facts.projectId, facts);
             const project = byId.get(facts.projectId);
-            if (project && facts.success) ctx.cache.put(scope(project), cacheKeys.get(project.entityId)!, JSON.stringify(facts));
+            if (project && facts.success && !facts.hasExternalProjectReferences && !uncached.has(project.entityId)) ctx.cache.put(scope(project), cacheKeys.get(project.entityId)!, JSON.stringify(facts));
           }
         }
       } else {

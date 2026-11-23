@@ -487,6 +487,20 @@ function resolveKubernetes(
     else if (target) infraUnresolved(ctx, ID, { type: "REFERENCES", sourceId: ctx.fileEntityId(hpa.file) ?? ctx.repositoryEntityId, display: `HorizontalPodAutoscaler/${hpa.name} -> ${target}`, reason: "scale target is not declared in the same namespace and deployment scope", category: "hpa-target-unresolved", provenance: p });
   }
 
+  const authentications = new Set(kube.named.filter((n) => n.kind === "TriggerAuthentication").map((n) => n.name));
+  for (const so of kube.named.filter((n) => n.kind === "ScaledObject")) {
+    const [target, min, max] = (so.target ?? "").split("|");
+    const [kind, name] = (target ?? "").split("/");
+    const sameNamespace = kube.workloads.filter((x) => !x.releaseId && x.kind === kind && x.name === name && x.namespace === so.namespace);
+    const w = workloadsByName.get(`${so.bucket}|${kind}|${name}`) ?? (sameNamespace.length === 1 ? sameNamespace[0] : undefined);
+    const p = prov("KEDA_SCALED_OBJECT", so.file, so.line);
+    const triggers = so.triggers ?? [];
+    const auths = [...new Set(triggers.map((t) => t.authentication).filter((a): a is string => !!a))];
+    if (w) ctx.graph.annotate(w.entityId, { autoscaler: so.name, autoscalerKind: "KEDA ScaledObject", minReplicas: min || null, maxReplicas: max || null, scaleTriggers: triggers.map((t) => (t.resource ? `${t.type}:${t.resource}` : t.type)), triggerAuthentications: auths }, p);
+    else if (name) infraUnresolved(ctx, ID, { type: "REFERENCES", sourceId: ctx.fileEntityId(so.file) ?? ctx.repositoryEntityId, display: `ScaledObject/${so.name} -> ${target}`, reason: "no single workload with this kind, name and namespace is declared in the repository", category: "keda-target-unresolved", provenance: p });
+    for (const auth of auths.filter((a) => !authentications.has(a))) infraUnresolved(ctx, ID, { type: "REFERENCES", sourceId: ctx.fileEntityId(so.file) ?? ctx.repositoryEntityId, display: `ScaledObject/${so.name} -> TriggerAuthentication/${auth}`, reason: "trigger authentication is not declared in this repository", category: "keda-authentication-unresolved", provenance: p });
+  }
+
   const groups = new Map<string, WorkloadRecord[]>();
   for (const w of kube.workloads) {
     if (w.releaseId && !w.environment) continue;

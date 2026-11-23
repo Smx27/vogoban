@@ -5,7 +5,7 @@ import { OPENAPI_OPERATIONS } from "./openapi-plugin.ts";
 import { normalizePath, normalizeVersion, pathVersion } from "./routes.ts";
 
 const ID = "contracts.api-resolver";
-const VERSION = "1";
+const VERSION = "3";
 
 interface OperationIndexEntry {
   id: string;
@@ -167,6 +167,12 @@ export const apiResolverPlugin: AnalysisPlugin = {
     }
     for (const endpoint of endpoints) graph.annotate(endpoint.id, { openApiDocumented: documented.has(endpoint.id) }, prov("OPENAPI_COVERAGE", endpoint.location));
 
+    for (const op of entities.filter((e) => e.kind === "ApiOperation" && e.metadata.contractSource === "nextjs-app-router")) {
+      const apiId = relationships.find((r) => r.type === "CONTAINS" && r.targetId === op.id && byId.get(r.sourceId)?.kind === "Api")?.sourceId;
+      const provider = apiId && relationships.find((r) => r.type === "CONTAINS" && r.targetId === apiId && r.metadata.role === "api-provider")?.sourceId;
+      if (apiId && provider) index({ id: op.id, apiId, provider, method: String(op.metadata.method), shape: String(op.metadata.routeShape), version: null, source: "code" });
+    }
+
     let resolved = 0;
     let external = 0;
     let unresolved = 0;
@@ -196,6 +202,10 @@ export const apiResolverPlugin: AnalysisPlugin = {
         continue;
       }
       const display = `${call.verb} ${target.host ? `${target.scheme}://${target.host}` : ""}${target.path}`;
+      if (!target.host && /^(fetch|axios|angular-http-client)$/.test(call.api) && (call.baseConfigurationKey || call.configurationKey || call.details?.baseExpression)) {
+        fail(call.baseConfigurationKey || call.configurationKey ? "configured-url" : "dynamic-url", "request base URL is not statically determinable; a relative path alone does not establish same origin", display);
+        continue;
+      }
       if (target.host && !target.logicalHost && target.host !== "localhost") {
         external++;
         const externalId = graph.entity({
@@ -215,10 +225,27 @@ export const apiResolverPlugin: AnalysisPlugin = {
       }
       const shape = normalizePath(target.path).shape;
       const exact = [...(byRoute.get(`${call.verb}|${shape}`) ?? []), ...(byRoute.get(`ANY|${shape}`) ?? [])];
-      const candidates = exact.length ? exact : templateMatches(call.verb, shape);
+      let candidates = exact.length ? exact : templateMatches(call.verb, shape);
+      const owners = entities.filter((e) => e.kind === "Application" && (call.applications.includes(e.id) || (!call.applications.length && e.projectId === call.projectId)) && typeof e.metadata.root === "string" && (e.metadata.root === "" || call.location.file.startsWith(`${e.metadata.root}/`))).sort((a, b) => String(b.metadata.root).length - String(a.metadata.root).length);
+      const owner = owners[0];
+      const sameOrigin = owner?.metadata.framework === "nextjs" && /^(fetch|axios|angular-http-client)$/.test(call.api) && !target.host && !call.baseConfigurationKey && !call.configurationKey && !call.details?.baseExpression && !call.url.startsWith("//");
+      if (sameOrigin) {
+        candidates = candidates.filter((c) => owner && c.provider === owner.id);
+      } else {
+        candidates = candidates.filter((c) => byId.get(c.id)?.metadata.contractSource !== "nextjs-app-router");
+      }
+      const callerApps = new Set([...call.applications, ...(owner ? [owner.id] : [])]);
+      if (!target.host && callerApps.size && !sameOrigin && (/^HttpClient\./.test(call.api) || call.baseConfigurationKey || call.configurationKey || call.details?.baseExpression)) {
+        const others = candidates.filter((c) => !c.provider.split(",").some((p) => callerApps.has(p)));
+        if (candidates.length && !others.length) {
+          fail(call.baseConfigurationKey || call.configurationKey ? "configured-url" : "dynamic-url", "relative URL on a client whose base address is not statically known; the only operations matching the path belong to the calling application itself", display);
+          continue;
+        }
+        candidates = others;
+      }
       const providers = new Set(candidates.map((c) => c.provider));
       if (!candidates.length) {
-        fail("no-matching-operation", target.logicalHost ? `no API operation in this repository matches ${display} (service-discovery host '${target.host}')` : `no API operation in this repository matches ${display}`, display);
+        fail(sameOrigin ? "same-origin-operation-not-found" : "no-matching-operation", sameOrigin ? `no API operation in the caller's application matches ${display}` : target.logicalHost ? `no API operation in this repository matches ${display} (service-discovery host '${target.host}')` : `no API operation in this repository matches ${display}`, display);
         continue;
       }
       if (providers.size > 1) {
@@ -228,9 +255,9 @@ export const apiResolverPlugin: AnalysisPlugin = {
       resolved++;
       const versions = new Set(candidates.map((c) => c.version));
       for (const candidate of candidates) {
-        relate("CALLS_ENDPOINT", call.callerEntityId, candidate.id, "INFERRED", callProv, {
+        relate("CALLS_ENDPOINT", call.callerEntityId, candidate.id, sameOrigin ? "STRUCTURALLY_RESOLVED" : "INFERRED", callProv, {
           ...meta,
-          matchStage: exact.length ? "method+normalized-route (single provider in repository)" : "method+route-template (single provider in repository)",
+          matchStage: sameOrigin ? "same-origin+application+method+route" : exact.length ? "method+normalized-route (single provider in repository)" : "method+route-template (single provider in repository)",
           host: target.host,
           versionAmbiguous: versions.size > 1,
         });

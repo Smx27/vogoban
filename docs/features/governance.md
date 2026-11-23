@@ -1,6 +1,6 @@
 # Architecture governance and ownership
 
-Governance lets you write architecture rules as YAML policy files ("the API must not write to Cosmos DB directly", "every Azure Function must be hosted on a declared Function App") and evaluate them against the stored graph. Ownership tells you which team owns each component, from CODEOWNERS and optional enterprise metadata. Both work on the same graph snapshots as impact and security, so every result names the snapshot it was computed from and can be reproduced.
+Governance lets you write architecture rules as YAML policy files ("the API must not write to Cosmos DB directly", "every Azure Function must be hosted on a declared Function App") and evaluate them against the stored graph. Ownership tells you which team owns each component, from CODEOWNERS, Backstage `catalog-info.yaml` descriptors and optional enterprise metadata. Both work on the same graph snapshots as impact and security, so every result names the snapshot it was computed from and can be reproduced.
 
 ## Why use it
 
@@ -171,6 +171,10 @@ A `CODEOWNERS` file (`.github/CODEOWNERS`, `CODEOWNERS`, `docs/CODEOWNERS` or `.
 
 Handles become teams only when enterprise metadata maps them (below); otherwise the handle itself is shown.
 
+### Backstage catalog descriptors
+
+A `catalog-info.yaml` (or `.yml`) with `apiVersion: backstage.io/...` is parsed during analysis into `OwnershipRule` entities with source `BACKSTAGE`: `spec.owner` (a `group:` prefix and a namespace such as `default/` are dropped; `user:alice` stays `user:alice`), the catalog kind and name, `system`, `domain` and `lifecycle`. A descriptor at the repository root covers the repository; one in a subfolder covers that folder. An owner that matches a team id or CODEOWNERS handle in enterprise metadata becomes that team. Backstage owners are used only when explicit rules and CODEOWNERS give no owner, unless `ownership.precedence` lists `backstage` earlier. A descriptor without `spec.owner` adds no ownership.
+
 ### Enterprise metadata
 
 `vogoban-enterprise.yaml` (or `--enterprise <file>`, `$VOGOBAN_ENTERPRISE`) declares organizations, business units, teams with their CODEOWNERS handles, explicit ownership rules, data classification, criticality, exposure, environment stages, trust boundaries, approved crossings, approved secret providers and finding severity overrides. Selectors use the governance selector syntax.
@@ -289,7 +293,7 @@ Governance sees ownership and enterprise facts:
 ## Limitations
 
 - Rules see only relationships stored in the graph. A dependency created at runtime (reflection, configuration, service location) is invisible to them, and a forbidden edge Vogoban did not extract cannot be detected.
-- Ownership comes only from CODEOWNERS and enterprise metadata; commit history is not used.
+- Ownership comes only from CODEOWNERS, Backstage descriptors and enterprise metadata; commit history is not used, and Backstage `Location`, `Group` or `System` entities are not followed to other files.
 - Enterprise metadata is your declaration. Vogoban does not verify that a team, classification or boundary is accurate.
 - Policies and metadata files placed inside the repository are repository files; with the default in-repository store, keep them committed so `graph status` stays clean.
 

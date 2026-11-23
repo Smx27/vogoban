@@ -2,6 +2,8 @@
 
 The MetaGraph connects independently analyzed repositories. Each repository keeps its own RepositoryGraph with its own facts; the MetaGraph adds only the relationships between them (shared topics, APIs one repository provides and another calls, message contracts, packages, infrastructure declared elsewhere), each with deterministic evidence. Matches that rest on a name alone are kept as unresolved, never linked.
 
+These relationships depend on the supporting facts actually being extracted and resolved. A completed build or a `READY` repository is not a guarantee of complete service-to-service connectivity. Start with the [shared-store workflow and verified enterprise-landscape results](../graph/metagraph-workflow.md): that eleven-repository sample now includes publisher/consumer contract links and Azure infrastructure links, while API calls without a declared provider identity remain unresolved. The three-repository Contoso examples below describe a different fixture; their outputs are not the enterprise-landscape validation results.
+
 ## Why use it
 
 Real systems are split across repositories: an API here, the Functions that consume its messages there, the Terraform that declares the shared Service Bus somewhere else. With the MetaGraph you can:
@@ -205,7 +207,7 @@ Each resolver links two repositories only on an exact, deterministic key, and re
 | Azure resources | account-qualified resource name and Azure kind (`service-bus-entity|sb-contoso-orders/orders`); a declaration must have an exact name and a known parent | `exact-resource-name`, `producer-consumer`, `infrastructure-declaration` |
 | Messages | message namespace + name + version, or a shared contract package | `namespace-name-version`, `shared-contract-type`, `shared-contract-package` |
 | APIs | OpenAPI operations and code-first operations by method and normalized route, plus HTTP-call hosts and service-URL configuration | `api-provider`, `http-call-host`, `service-url-configuration` |
-| Packages | NuGet/npm package identity produced by one repository and referenced by another | `package-identity`, `package-reference` |
+| Packages | NuGet/npm package identity produced by one repository and referenced by another; a `ProjectReference` or npm `file:` path that resolves into another catalog repository | `package-identity`, `package-reference`, `project-reference-path`, `file-dependency-path` |
 | Deployments | container image identity between a producing pipeline/Dockerfile and a deployment | `image-identity`, `producer-dockerfile` |
 | External systems | hosts from configuration and connection strings | `configuration-url`, `connection-string-host` |
 

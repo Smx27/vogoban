@@ -17,6 +17,7 @@ export interface DotnetProject {
   sourceFiles: string[];
   razorComponents: string[];
   projectReferences: string[];
+  externalProjectReferences?: string[];
   packages: { name: string; version: string | null }[];
   frameworks: { targetFramework: string; referencePaths: string[]; restored: boolean }[];
   frameworkReferences: string[];

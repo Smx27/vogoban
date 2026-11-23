@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/reporting/report-accepted.schema.json",
+  "title": "ReportAcceptedEvent",
+  "description": "Published by reporting-platform when a report is accepted for generation. Contract id reporting/report-accepted. Mirrors Vg.Enterprise.Contracts.Reporting.ReportAcceptedEvent.",
+  "type": "object",
+  "properties": {
+    "reportId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "requestedBy": {
+      "type": "string"
+    },
+    "reportType": {
+      "type": "string",
+      "enum": [
+        "sales",
+        "inventory",
+        "customer",
+        "revenue"
+      ]
+    },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "customerId": {
+          "type": "string"
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "reportId",
+    "requestedBy",
+    "reportType",
+    "createdAt"
+  ],
+  "additionalProperties": false
+}

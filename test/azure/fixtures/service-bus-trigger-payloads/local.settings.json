@@ -1,0 +1,7 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "Bus__fullyQualifiedNamespace": "sb-evidence.servicebus.windows.net"
+  }
+}

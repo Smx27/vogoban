@@ -35,7 +35,8 @@ import {
 const ID = "infrastructure.kubernetes";
 const VERSION = "1";
 const WORKLOADS = new Set(["Deployment", "StatefulSet", "DaemonSet", "ReplicaSet", "Job", "CronJob", "Pod"]);
-const SUPPORTED = new Set([...WORKLOADS, "Namespace", "Service", "Ingress", "ConfigMap", "Secret", "ServiceAccount", "HorizontalPodAutoscaler", "List"]);
+const SUPPORTED = new Set([...WORKLOADS, "Namespace", "Service", "Ingress", "ConfigMap", "Secret", "ServiceAccount", "HorizontalPodAutoscaler", "ScaledObject", "TriggerAuthentication", "ClusterTriggerAuthentication", "List"]);
+const CATALOG_DESCRIPTOR = /^backstage\.io\//;
 
 const labelsOf = (v: unknown): Record<string, string> => {
   const out: Record<string, string> = {};
@@ -96,6 +97,7 @@ export const kubernetesPlugin: AnalysisPlugin = {
       const lines = text.split(/\r?\n/);
       for (const doc of docs) {
         if (!isObject(doc.value) || !str(doc.value.kind) || !str(doc.value.apiVersion)) continue;
+        if (CATALOG_DESCRIPTOR.test(str(doc.value.apiVersion)!)) continue;
         const items = str(doc.value.kind) === "List" ? list(doc.value.items).filter(isObject) : [doc.value];
         for (const item of items) {
           documents.push({
@@ -380,6 +382,24 @@ function emitResource(ctx: AnalysisContext, doc: ManifestDocument, facts: Kubern
     const id = infraEntity(ctx, { key: baseKey, kind: "ServiceAccount", name, qualifiedName: `${scopeLabel}ServiceAccount/${namespace ? `${namespace}/` : ""}${name}`, file: doc.file, line: doc.line, metadata: { ...common } }, prov);
     link(id);
     facts.named.push({ entityId: id, kind: "ServiceAccount", name, namespace, bucket, target: null, keyIds: {}, file: doc.file, line: doc.line });
+    return;
+  }
+
+  if (kind === "ScaledObject") {
+    const ref = isObject(spec.scaleTargetRef) ? spec.scaleTargetRef : {};
+    const triggers = list(spec.triggers).filter(isObject).map((t) => {
+      const m = isObject(t.metadata) ? t.metadata : {};
+      const entity = str(m.queueName) ?? str(m.topicName) ?? str(m.eventHubName) ?? str(m.blobContainerName) ?? null;
+      const account = (str(m.namespace) ?? str(m.accountName) ?? "").replace(/\.servicebus\.windows\.net$/i, "");
+      const resource = entity ? [account, entity, str(m.subscriptionName)].filter(Boolean).join("/") : null;
+      return { type: str(t.type) ?? "unknown", resource, authentication: isObject(t.authenticationRef) ? str(t.authenticationRef.name) : null };
+    });
+    facts.named.push({ entityId: "", kind: "ScaledObject", name, namespace, bucket, target: `${str(ref.kind) ?? "Deployment"}/${str(ref.name) ?? ""}|${str(spec.minReplicaCount) ?? ""}|${str(spec.maxReplicaCount) ?? ""}`, keyIds: {}, triggers, file: doc.file, line: doc.line });
+    return;
+  }
+
+  if (kind === "TriggerAuthentication" || kind === "ClusterTriggerAuthentication") {
+    facts.named.push({ entityId: "", kind: "TriggerAuthentication", name, namespace: kind === "ClusterTriggerAuthentication" ? null : namespace, bucket, target: null, keyIds: {}, file: doc.file, line: doc.line });
     return;
   }
 

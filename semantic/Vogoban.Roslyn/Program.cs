@@ -34,6 +34,9 @@ void Visit(ProjectRequest p)
 foreach (var p in request.Projects) Visit(p);
 
 var compilations = new Dictionary<(string Project, string Tfm), CSharpCompilation>();
+var projectPaths = request.Projects.Select(p => Path.GetFullPath(Path.Combine(root, p.ProjectPath))).ToHashSet(StringComparer.Ordinal);
+var externalOutputs = new Dictionary<(string Path, string Tfm), string?>();
+var externalDependentProjects = new HashSet<string>();
 
 CSharpCompilation? DependencyCompilation(string projectId, TargetFramework tfm)
 {
@@ -50,6 +53,7 @@ foreach (var project in order)
     var started = DateTime.UtcNow;
     var perFramework = new List<(string Tfm, ProjectResult Result)>();
     var merged = new ProjectResult { ProjectId = project.Id, AssemblyName = project.AssemblyName };
+    merged.HasExternalProjectReferences = project.ProjectReferences.Any(externalDependentProjects.Contains);
     try
     {
         var frameworks = project.Frameworks.Count > 0 ? project.Frameworks : new List<FrameworkRequest> { new("net8.0", new()) };
@@ -132,10 +136,37 @@ foreach (var project in order)
             foreach (var path in packageReferencePaths)
             {
                 var name = Path.GetFileNameWithoutExtension(path);
-                if (!frameworkAssemblies.Contains(name)) packageAssemblies[name] = path;
+                if (!File.Exists(path)) continue;
+                var existing = references.OfType<PortableExecutableReference>().FirstOrDefault(r => string.Equals(Path.GetFileNameWithoutExtension(r.FilePath), name, StringComparison.OrdinalIgnoreCase));
+                if (existing?.FilePath is { } existingPath)
+                {
+                    if (System.Reflection.AssemblyName.GetAssemblyName(path).Version <= System.Reflection.AssemblyName.GetAssemblyName(existingPath).Version) continue;
+                    references.Remove(existing);
+                }
+                packageAssemblies[name] = path;
             }
             foreach (var path in packageAssemblies.Values)
                 if (References.ForFile(path) is { } r) references.Add(r);
+
+            foreach (var dependencyPath in evaluated?.ProjectReferences ?? new())
+            {
+                if (projectPaths.Contains(dependencyPath)) continue;
+                merged.HasExternalProjectReferences = true;
+                var key = (dependencyPath, tfm.Moniker);
+                if (!externalOutputs.TryGetValue(key, out var output))
+                {
+                    try
+                    {
+                        output = MsBuildEvaluation.ReferenceOutput(dependencyPath, tfm);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(new { @event = "roslyn.project-reference-unavailable", project = project.Name, path = dependencyPath, reason = ex.GetType().Name });
+                    }
+                    externalOutputs[key] = output;
+                }
+                if (output != null && References.ForFile(output) is { } externalReference) references.Add(externalReference);
+            }
 
             var transitive = new SortedSet<string>(StringComparer.Ordinal);
             var pending = new Stack<string>(project.ProjectReferences);
@@ -154,6 +185,7 @@ foreach (var project in order)
                 references.Add(reference);
             }
 
+            if (merged.HasExternalProjectReferences) externalDependentProjects.Add(project.Id);
             var options = new CSharpCompilationOptions(
                 outputType.Equals("Exe", StringComparison.OrdinalIgnoreCase) || outputType.Equals("WinExe", StringComparison.OrdinalIgnoreCase)
                     ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary,

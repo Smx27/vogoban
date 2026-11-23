@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/inventory/inventory-reserved.schema.json",
+  "title": "InventoryReservedEvent",
+  "description": "Published by inventory-service when inventory is reserved for an order. Contract id inventory/inventory-reserved.",
+  "type": "object",
+  "properties": {
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sku": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "integer"
+    },
+    "reservedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "orderId",
+    "sku",
+    "quantity",
+    "reservedAt"
+  ],
+  "additionalProperties": false
+}

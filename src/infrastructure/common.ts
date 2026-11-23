@@ -511,7 +511,8 @@ export interface IngressRecord {
 
 export interface NamedResourceRecord {
   entityId: string;
-  kind: "ConfigMap" | "Secret" | "ServiceAccount" | "HorizontalPodAutoscaler";
+  kind: "ConfigMap" | "Secret" | "ServiceAccount" | "HorizontalPodAutoscaler" | "ScaledObject" | "TriggerAuthentication";
+  triggers?: { type: string; resource: string | null; authentication: string | null }[];
   name: string;
   namespace: string | null;
   bucket: string;

@@ -1,9 +1,10 @@
 import { normalizePath } from "../contracts/routes.ts";
+import { resolveUrl } from "../contracts/http-calls.ts";
 import type { Provenance } from "../graph/model.ts";
 import type { GraphStore } from "../store/store.ts";
 import type { MetaEmitter, RepoView } from "./emitter.ts";
 import { collectInfrastructure, composeHostIndex, hostIndex, resolveOwnership, type HostTarget, type InfraInputs } from "./infrastructure.ts";
-import { facts, hostOf, isFqdn, isPlaceholderHost, links, str, type CrossRepositoryResolver, type Fact, type Link } from "./resolver.ts";
+import { facts, hostOf, isFqdn, isPlaceholderHost, links, str, strs, type CrossRepositoryResolver, type Fact, type Link } from "./resolver.ts";
 
 export interface ConsumerCall {
   sourceId: string;
@@ -15,6 +16,9 @@ export interface ConsumerCall {
   requestType: string | null;
   responseType: string | null;
   provenance: Provenance[];
+  api?: string | null;
+  applications?: string[];
+  baseExpression?: string | null;
 }
 
 export interface ConfigUrl {
@@ -53,7 +57,7 @@ function shapeSegments(shape: string) {
 
 export const apiResolver: CrossRepositoryResolver<ApiInputs> = {
   id: "apis",
-  version: "1",
+  version: "5",
   category: "api",
   collect(store: GraphStore, repo: RepoView): ApiInputs {
     const repoId = repo.entry.repositoryId;
@@ -80,10 +84,12 @@ export const apiResolver: CrossRepositoryResolver<ApiInputs> = {
         ...unresolvedCalls.map((u) => ({
           sourceId: u.sourceId, verb: str(u.metadata.verb), url: str(u.metadata.url), category: String(u.metadata.category ?? ""), baseAddress: str(u.metadata.baseAddress),
           configurationKeys: [str(u.metadata.configurationKey), str(u.metadata.baseConfigurationKey)].filter((k): k is string => !!k), requestType: str(u.metadata.requestType), responseType: str(u.metadata.responseType), provenance: u.provenance.slice(0, 2),
+          api: str(u.metadata.api), applications: strs(u.metadata.applications), baseExpression: str(u.metadata.baseExpression),
         })),
         ...externalCalls.map((l) => ({
-          sourceId: l.sourceId, verb: str(l.metadata.verb), url: `${externalHosts.get(l.targetId) ?? ""}${str(l.metadata.path) ?? ""}`, category: "external-host", baseAddress: null,
-          configurationKeys: [], requestType: str(l.metadata.requestType), responseType: str(l.metadata.responseType), provenance: l.provenance,
+          sourceId: l.sourceId, verb: str(l.metadata.verb), url: str(l.metadata.url) ?? `${externalHosts.get(l.targetId) ?? ""}${str(l.metadata.path) ?? ""}`, category: "external-host", baseAddress: str(l.metadata.baseAddress),
+          configurationKeys: [str(l.metadata.configurationKey), str(l.metadata.baseConfigurationKey)].filter((k): k is string => !!k), requestType: str(l.metadata.requestType), responseType: str(l.metadata.responseType), provenance: l.provenance,
+          api: str(l.metadata.api), applications: strs(l.metadata.applications), baseExpression: str(l.metadata.baseExpression),
         })),
       ],
       configUrls: collectConfigUrls(store, repoId),
@@ -143,50 +149,65 @@ export const apiResolver: CrossRepositoryResolver<ApiInputs> = {
         const source = { id: call.sourceId, repositoryId: repoId, provenance: call.provenance };
         const absolute = call.url && /^[a-z][\w+.-]*:\/\//i.test(call.url) ? call.url : null;
         const base = !absolute && call.baseAddress && /^[a-z][\w+.-]*:\/\//i.test(call.baseAddress) ? call.baseAddress : null;
-        const hostCandidates: { host: string; environment: string | null; via: string; provenance: Provenance[] }[] = [];
+        const hostCandidates: { host: string; environment: string | null; via: string; provenance: Provenance[]; baseUrl?: string }[] = [];
         const directHost = hostOf(absolute ?? base);
         if (directHost) hostCandidates.push({ host: directHost, environment: null, via: absolute ? "absolute-url" : "client-base-address", provenance: [] });
         for (const key of call.configurationKeys) {
           for (const c of configByKey.get(configKey(key)) ?? []) {
             const h = hostOf(c.value);
-            if (h && c.valueKind === "url") hostCandidates.push({ host: h, environment: c.environment, via: `configuration:${c.key}`, provenance: c.provenance });
+            if (h && c.valueKind === "url") hostCandidates.push({ host: h, environment: c.environment, via: `configuration:${c.key}`, provenance: c.provenance, baseUrl: c.value! });
             else emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${call.verb ?? "?"} ${c.value ?? key}`, reason: `base URL configuration ${c.key} is a placeholder (${c.value})`, category: "service-url-placeholder", extractor: "API_CONSUMER", metadata: { configuration: c.key, environment: c.environment } });
           }
         }
         const rawPath = absolute ? absolute.replace(/^[a-z][\w+.-]*:\/\/[^/]*/i, "") : call.url && !call.url.startsWith("{") ? call.url : null;
-        const path = rawPath !== null ? `${base ? base.replace(/^[a-z][\w+.-]*:\/\/[^/]*/i, "").replace(/\/+$/, "") : ""}/${rawPath.replace(/^\/+/, "")}` : null;
+        const path = rawPath !== null ? (base && call.url ? resolveUrl(base, call.url)?.path ?? null : `/${rawPath.replace(/^\/+/, "")}`) : null;
         const shape = path ? normalizePath(path).shape : null;
         const verb = call.verb?.toUpperCase() ?? null;
         let linked = false;
+        let conflicted = false;
+
+        if (/^(fetch|axios|angular-http-client)$/.test(call.api ?? "") && !absolute && !base && !call.configurationKeys.length && !call.baseExpression && call.url?.startsWith("/") && !call.url.startsWith("//")) {
+          emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb ?? "?"} ${path ?? ""}`, reason: "relative frontend URL targets the caller's own origin; no operation in that application was resolved", category: "same-origin-operation-not-found", extractor: "API_CONSUMER", metadata: { verb, path, applications: call.applications ?? [] } });
+          continue;
+        }
 
         for (const hc of hostCandidates) {
           if (isPlaceholderHost(hc.host)) continue;
+          const candidatePath = hc.baseUrl && call.url && !absolute ? resolveUrl(hc.baseUrl, call.url)?.path ?? path : path;
+          const candidateShape = candidatePath ? normalizePath(candidatePath).shape : null;
           const targets = resolveHost(hc.host, repoId, hc.environment);
           if (targets === "conflict") {
+            conflicted = true;
             emit.conflict({ kind: "conflicting-service-host", subject: `${hc.host}|${hc.environment ?? ""}`, factIds: (hosts.get(hc.host) ?? []).map((t) => t.appId), description: `host ${hc.host} maps to applications in ${new Set((hosts.get(hc.host) ?? []).map((t) => t.appRepo)).size} repositories${hc.environment ? ` in ${hc.environment}` : ""}` });
             emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb ?? "?"} ${hc.host}${path ?? ""}`, reason: `host ${hc.host} is declared by more than one repository`, category: "provider-conflict", extractor: "API_CONSUMER" });
             continue;
           }
           for (const t of targets) {
-            const providerOps = verb && shape ? matchOps(verb, shape).filter((o) => o.repoId === t.appRepo && (!o.ownerApp || o.ownerApp === t.appId)) : [];
+            const providerOps = verb && candidateShape ? matchOps(verb, candidateShape).filter((o) => o.repoId === t.appRepo && (!o.ownerApp || o.ownerApp === t.appId)) : [];
             const kinds = [`service-host:${t.via}`, hc.via];
             const environment = hc.environment ?? t.environment;
             for (const o of providerOps) {
-              emit.relate({ type: "CALLS_ENDPOINT", source, target: { id: o.op.id, repositoryId: o.repoId, provenance: o.op.provenance }, evidence: "STRUCTURALLY_RESOLVED", confidence: 0.85, evidenceKinds: [...kinds, "method+route"], extractor: "API_CONSUMER", environment, metadata: { host: hc.host, verb, path } });
+              emit.relate({ type: "CALLS_ENDPOINT", source: { ...source, provenance: [...source.provenance, ...hc.provenance] }, target: { id: o.op.id, repositoryId: o.repoId, provenance: o.op.provenance }, evidence: "STRUCTURALLY_RESOLVED", confidence: 0.85, evidenceKinds: [...kinds, "method+route"], extractor: "API_CONSUMER", environment, metadata: { host: hc.host, verb, path: candidatePath } });
               if (o.apiId) emit.relate({ type: "CONSUMES_API", source: emit.repositoryEntity(repoId), target: { id: o.apiId, repositoryId: o.repoId }, evidence: "STRUCTURALLY_RESOLVED", confidence: 0.85, evidenceKinds: kinds, extractor: "API_CONSUMER", environment });
             }
-            if (verb && shape && !providerOps.length) emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb} ${hc.host}${path}`, reason: `host resolves to an application in ${emit.repos.get(t.appRepo)?.entry.name}, but no operation there matches ${verb} ${path}`, category: "operation-not-found-at-provider", extractor: "API_CONSUMER" });
-            repoLink(repoId, t.appRepo, kinds, providerOps.length ? 0.85 : 0.65, environment, `${verb ?? "?"} ${hc.host}${path ?? ""}`, call.provenance);
+            if (verb && candidateShape && !providerOps.length) emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb} ${hc.host}${candidatePath}`, reason: `host resolves to an application in ${emit.repos.get(t.appRepo)?.entry.name}, but no operation there matches ${verb} ${candidatePath}`, category: "operation-not-found-at-provider", extractor: "API_CONSUMER" });
+            if (providerOps.length) repoLink(repoId, t.appRepo, kinds, 0.85, environment, `${verb ?? "?"} ${hc.host}${candidatePath ?? ""}`, [...call.provenance, ...hc.provenance]);
             linked = true;
           }
         }
-        if (linked || !verb || !shape) {
-          if (!linked && !hostCandidates.length && call.category === "configured-url") emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb ?? "?"} (configured base URL ${call.configurationKeys.join(", ") || "unknown"})`, reason: "no URL value for the configuration key is declared in the repository's configuration or infrastructure", category: "configuration-value-missing", extractor: "API_CONSUMER" });
+        if (linked || conflicted || !verb || !shape) {
+          if (!linked && !hostCandidates.length && call.category === "configured-url" && !call.configurationKeys.some((k) => configByKey.has(configKey(k)))) emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb ?? "?"} (configured base URL ${call.configurationKeys.join(", ") || "unknown"})`, reason: "no URL value for the configuration key is declared in the repository's configuration or infrastructure", category: "configuration-value-missing", extractor: "API_CONSUMER", metadata: { configurationKeys: call.configurationKeys, verb, url: call.url } });
+          continue;
+        }
+        if (!hostCandidates.length && call.configurationKeys.length) {
+          if (!call.configurationKeys.some((k) => configByKey.has(configKey(k)))) emit.unresolved({ type: "CALLS_ENDPOINT", source, display: `${verb} ${path}`, reason: "no URL value for the configuration key is declared in the repository's configuration or infrastructure", category: "configuration-value-missing", extractor: "API_CONSUMER", metadata: { configurationKeys: call.configurationKeys, verb, path, url: call.url } });
           continue;
         }
         if (directHost && isFqdn(directHost)) continue;
         const candidates = matchOps(verb, shape).filter((o) => o.repoId !== repoId);
-        const typed = candidates.filter((o) => {
+        const placeholderHost = hostCandidates.some((h) => isPlaceholderHost(h.host));
+        const dynamicHost = !!call.baseExpression || call.category === "dynamic-url" || (!!(absolute ?? base) && !directHost);
+        const typed = placeholderHost || dynamicHost ? [] : candidates.filter((o) => {
           const payload = inputs.get(o.repoId)!.payloads.filter((p) => p.operationId === o.op.id);
           return payload.some((p) => (p.type === call.requestType || p.type === call.responseType) && p.assembly && input.packageNames.includes(p.assembly.toLowerCase()));
         });
@@ -200,9 +221,9 @@ export const apiResolver: CrossRepositoryResolver<ApiInputs> = {
         }
         emit.unresolved({
           type: "CALLS_ENDPOINT", source, display: `${verb} ${directHost ? `${directHost}` : ""}${path}`,
-          reason: candidates.length ? `${new Set(candidates.map((c) => c.repoId)).size} repositories expose a matching route, but no host, configuration, or shared-contract evidence identifies the provider` : "no repository in the catalog exposes a matching operation",
-          category: candidates.length ? "route-only-candidates" : "no-provider-in-catalog", extractor: "API_CONSUMER",
-          metadata: { verb, path, host: directHost, candidates: [...new Set(candidates.map((c) => emit.repos.get(c.repoId)?.entry.name ?? c.repoId))].sort() },
+          reason: directHost && /^(localhost|127\.|0\.0\.0\.0$)/i.test(directHost) ? "development loopback host does not identify a deployed provider; matching routes, ports, and shared payload types are not production identity evidence" : placeholderHost ? "placeholder host does not identify a provider, even when a route and shared payload type match" : dynamicHost ? "request base URL is dynamic; a matching route and shared payload type do not identify its host" : candidates.length ? `${new Set(candidates.map((c) => c.repoId)).size} repositories expose a matching route, but no host, configuration, or shared-contract evidence identifies the provider` : "no repository in the catalog exposes a matching operation",
+          category: directHost && /^(localhost|127\.|0\.0\.0\.0$)/i.test(directHost) ? "development-host-unresolved" : placeholderHost ? "service-url-placeholder" : dynamicHost ? "dynamic-host-unresolved" : candidates.length ? "route-only-candidates" : "no-provider-in-catalog", extractor: "API_CONSUMER",
+          metadata: { verb, path, host: directHost, url: call.url, baseAddress: call.baseAddress, configurationKeys: call.configurationKeys, baseExpression: call.baseExpression ?? null, candidates: [...new Set(candidates.map((c) => emit.repos.get(c.repoId)?.entry.name ?? c.repoId))].sort() },
         });
       }
 

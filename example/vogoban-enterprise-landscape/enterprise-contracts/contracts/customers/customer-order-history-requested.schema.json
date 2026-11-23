@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/customers/customer-order-history-requested.schema.json",
+  "title": "CustomerOrderHistoryRequestedEvent",
+  "description": "Requested by customer-portal or operations-portal to get order history for a customer. Contract id customers/customer-order-history-requested. Mirrors Vg.Enterprise.Contracts.Customers.CustomerOrderHistoryRequestedEvent.",
+  "type": "object",
+  "properties": {
+    "customerId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "includeDetails": {
+      "type": "boolean"
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "customerId",
+    "requestedAt"
+  ],
+  "additionalProperties": false
+}

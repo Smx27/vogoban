@@ -14,7 +14,7 @@ Ownership, classification, criticality, exposure overrides and trust boundaries 
 2. `$VOGOBAN_ENTERPRISE`,
 3. `./vogoban-enterprise.yaml` in the current directory, if present.
 
-Without it, ownership comes only from `CODEOWNERS` files, nothing is classified, and criticality is unspecified. A file that does not exist exits 2; a file with errors makes every command except `validate-enterprise` refuse to run.
+Without it, ownership comes only from `CODEOWNERS` files and Backstage `catalog-info.yaml` descriptors, nothing is classified, and criticality is unspecified. A file that does not exist exits 2; a file with errors makes every command except `validate-enterprise` refuse to run.
 
 ### Schema summary
 
@@ -389,7 +389,7 @@ In the demo the two databases are members of `data-tier`, but the Functions that
 
 `ownership` without an argument summarises ownership state per category. `ownership <component>` explains who owns one component and why, with every ownership claim. `owners` lists owned components, `unowned` lists components with no owner (`UNOWNED`, `OWNER_UNKNOWN`), and `ownership-conflicts` lists components where sources disagree (`CONFLICT`).
 
-Ownership comes from explicit enterprise rules and `CODEOWNERS`, combined by the configured `precedence`. Containers pass ownership to their members when `inherit: true`.
+Ownership comes from explicit enterprise rules, `CODEOWNERS` and Backstage `catalog-info.yaml` owners, combined by the configured `precedence`. Without a precedence, Backstage owners apply only where explicit rules and CODEOWNERS name no owner. Containers pass ownership to their members when `inherit: true`.
 
 ### Usage
 

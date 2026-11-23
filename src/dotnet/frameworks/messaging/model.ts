@@ -12,7 +12,7 @@ export type TransportKind = "topic" | "queue" | "exchange" | "stream" | "queue-o
 const NON_CONTRACT = /^(object|string|byte|System\.(Object|String|Byte|ReadOnlyMemory|Memory|BinaryData|IO\.Stream)|Azure\.Messaging\.ServiceBus\.ServiceBusMessage|Confluent\.Kafka\.(Message|Null))$/;
 
 export function isContractType(ref: SymRef | undefined | null): ref is SymRef {
-  return !!ref && ref.kind !== "TypeParameter" && ref.kind !== "Interface" && !NON_CONTRACT.test(stripGenerics(ref.qualifiedName)) && !/\[\]$/.test(ref.qualifiedName);
+  return !!ref && !["TypeParameter", "Interface", "Error", "Unknown", "Dynamic"].includes(ref.kind) && !NON_CONTRACT.test(stripGenerics(ref.qualifiedName)) && !/\[\]$/.test(ref.qualifiedName);
 }
 
 export function derivedTypes(index: SemanticIndex, type: SymRef): string[] {
@@ -119,14 +119,14 @@ export class MessagingGraph {
     }
   }
 
-  consume(messageId: string | null, consumerKey: string, transportId: string | null, location: FactLocation | undefined, evidenceKind: string, evidence: EvidenceLevel = "COMPILER_RESOLVED", extra: Record<string, string | null> = {}) {
+  consume(messageId: string | null, consumerKey: string, transportId: string | null, location: FactLocation | undefined, evidenceKind: string, evidence: EvidenceLevel = "COMPILER_RESOLVED", extra: Record<string, string | null> = {}, transportEvidence: EvidenceLevel = evidence) {
     const consumerId = entityIdOf(this.ctx, consumerKey);
     const prov = this.prov(evidenceKind, location);
     const meta = { framework: this.framework, dispatch: this.dispatch, ...extra };
     if (messageId) relate(this.ctx, this.dispatch === "in-process" ? "HANDLED_BY" : "CONSUMED_BY", messageId, consumerId, evidence, prov, meta);
     if (transportId) {
-      relate(this.ctx, "ROUTES_TO", transportId, consumerId, evidence, prov, meta);
-      if (messageId) relate(this.ctx, "CARRIES", transportId, messageId, evidence, prov, { framework: this.framework, rule: evidenceKind });
+      relate(this.ctx, "ROUTES_TO", transportId, consumerId, transportEvidence, prov, meta);
+      if (messageId) relate(this.ctx, "CARRIES", transportId, messageId, transportEvidence, prov, { framework: this.framework, rule: evidenceKind });
     }
   }
 

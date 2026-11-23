@@ -7,6 +7,7 @@ import { azRelate, azProv, azUnresolved } from "./common.ts";
 import { azureKeys } from "./catalog.ts";
 import { argRef, displayRef, type ValueRef } from "./values.ts";
 import { AZURE_SOURCE_HASH } from "./source-hash.ts";
+import { OptionBindings } from "./options.ts";
 
 export const SDK_PLUGIN = "azure.sdk";
 export const SDK_VERSION = `1+${AZURE_SOURCE_HASH}`;
@@ -108,47 +109,47 @@ interface Step {
 }
 
 /** The address contribution of one constructor or factory call on an SDK type. */
-function stepOf(type: string, method: string, args: Args): Step | null {
+function stepOf(type: string, method: string, args: Args, valueRef: (value: ArgValue | undefined) => ValueRef | null = argRef): Step | null {
   const t = short(type);
   const cs = args("connectionString");
-  const conn = cs ? argRef(cs) : null;
+  const conn = cs ? valueRef(cs) : null;
   const connStep = (extra: Step = {}): Step => ({ connection: conn, credential: conn ? "connection-string" : null, root: true, ...extra });
   if (method === ".ctor") {
     switch (t) {
       case "ServiceBusClient":
       case "ServiceBusAdministrationClient":
-        return cs ? connStep({ path: [] }) : { account: argRef(args("fullyQualifiedNamespace")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return cs ? connStep({ path: [] }) : { account: valueRef(args("fullyQualifiedNamespace")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "EventHubProducerClient":
       case "EventHubBufferedProducerClient":
       case "EventHubConsumerClient":
       case "EventProcessorClient":
       case "PartitionReceiver":
-        return cs ? connStep({ path: [argRef(args("eventHubName"))] }) : { account: argRef(args("fullyQualifiedNamespace")), credential: credentialOf(args("credential")), root: true, path: [argRef(args("eventHubName"))] };
+        return cs ? connStep({ path: [valueRef(args("eventHubName"))] }) : { account: valueRef(args("fullyQualifiedNamespace")), credential: credentialOf(args("credential")), root: true, path: [valueRef(args("eventHubName"))] };
       case "EventGridPublisherClient":
-        return { account: argRef(args("endpoint")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return { account: valueRef(args("endpoint")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "BlobServiceClient":
       case "QueueServiceClient":
       case "TableServiceClient":
-        return cs ? connStep({ path: [] }) : { account: argRef(args("serviceUri", "endpoint")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return cs ? connStep({ path: [] }) : { account: valueRef(args("serviceUri", "endpoint")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "BlobContainerClient":
-        return cs ? connStep({ path: [argRef(args("blobContainerName"))] }) : { account: argRef(args("blobContainerUri")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return cs ? connStep({ path: [valueRef(args("blobContainerName"))] }) : { account: valueRef(args("blobContainerUri")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "BlobClient":
       case "BlockBlobClient":
       case "AppendBlobClient":
       case "PageBlobClient":
-        return cs ? connStep({ path: [argRef(args("blobContainerName"))] }) : { account: argRef(args("blobUri")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return cs ? connStep({ path: [valueRef(args("blobContainerName"))] }) : { account: valueRef(args("blobUri")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "QueueClient":
-        return cs ? connStep({ path: [argRef(args("queueName"))] }) : { account: argRef(args("queueUri")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return cs ? connStep({ path: [valueRef(args("queueName"))] }) : { account: valueRef(args("queueUri")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "TableClient":
-        return cs ? connStep({ path: [argRef(args("tableName"))] }) : { account: argRef(args("endpoint")), credential: credentialOf(args("credential")), root: true, path: [argRef(args("tableName"))] };
+        return cs ? connStep({ path: [valueRef(args("tableName"))] }) : { account: valueRef(args("endpoint")), credential: credentialOf(args("credential")), root: true, path: [valueRef(args("tableName"))] };
       case "CosmosClient":
-        return cs ? connStep({ path: [] }) : { account: argRef(args("accountEndpoint")), credential: args("authKeyOrResourceToken") ? "key" : credentialOf(args("tokenCredential")), root: true, path: [] };
+        return cs ? connStep({ path: [] }) : { account: valueRef(args("accountEndpoint")), credential: args("authKeyOrResourceToken") ? "key" : credentialOf(args("tokenCredential")), root: true, path: [] };
       case "SecretClient":
       case "KeyClient":
       case "CertificateClient":
-        return { account: argRef(args("vaultUri")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return { account: valueRef(args("vaultUri")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "ConfigurationClient":
-        return cs ? connStep({ path: [] }) : { account: argRef(args("endpoint")), credential: credentialOf(args("credential")), root: true, path: [] };
+        return cs ? connStep({ path: [] }) : { account: valueRef(args("endpoint")), credential: credentialOf(args("credential")), root: true, path: [] };
       case "SqlConnection":
         return connStep({ path: [] });
     }
@@ -156,7 +157,7 @@ function stepOf(type: string, method: string, args: Args): Step | null {
   }
   switch (`${t}.${method}`) {
     case "ServiceBusClient.CreateSender":
-      return { path: [argRef(args("queueOrTopicName"))] };
+      return { path: [valueRef(args("queueOrTopicName"))] };
     case "ServiceBusClient.CreateReceiver":
     case "ServiceBusClient.CreateProcessor":
     case "ServiceBusClient.CreateSessionProcessor":
@@ -164,13 +165,13 @@ function stepOf(type: string, method: string, args: Args): Step | null {
     case "ServiceBusClient.AcceptSessionAsync":
     case "ServiceBusClient.CreateRuleManager": {
       const sub = args("subscriptionName");
-      return { path: sub ? [argRef(args("topicName")), argRef(sub)] : [argRef(args("queueName", "topicName"))] };
+      return { path: sub ? [valueRef(args("topicName")), valueRef(sub)] : [valueRef(args("queueName", "topicName"))] };
     }
     case "BlobServiceClient.GetBlobContainerClient":
-      return { path: [argRef(args("blobContainerName"))] };
+      return { path: [valueRef(args("blobContainerName"))] };
     case "BlobServiceClient.CreateBlobContainer":
     case "BlobServiceClient.CreateBlobContainerAsync":
-      return { path: [argRef(args("blobContainerName"))] };
+      return { path: [valueRef(args("blobContainerName"))] };
     case "BlobContainerClient.GetBlobClient":
     case "BlobContainerClient.GetBlockBlobClient":
     case "BlobContainerClient.GetAppendBlobClient":
@@ -179,21 +180,21 @@ function stepOf(type: string, method: string, args: Args): Step | null {
     case "QueueServiceClient.GetQueueClient":
     case "QueueServiceClient.CreateQueue":
     case "QueueServiceClient.CreateQueueAsync":
-      return { path: [argRef(args("queueName"))] };
+      return { path: [valueRef(args("queueName"))] };
     case "TableServiceClient.GetTableClient":
-      return { path: [argRef(args("tableName"))] };
+      return { path: [valueRef(args("tableName"))] };
     case "CosmosClient.GetContainer":
-      return { path: [argRef(args("databaseId")), argRef(args("containerId"))] };
+      return { path: [valueRef(args("databaseId")), valueRef(args("containerId"))] };
     case "CosmosClient.GetDatabase":
     case "CosmosClient.CreateDatabaseIfNotExistsAsync":
     case "CosmosClient.CreateDatabaseAsync":
-      return { path: [argRef(args("id"))] };
+      return { path: [valueRef(args("id"))] };
     case "Database.GetContainer":
-      return { path: [argRef(args("id"))] };
+      return { path: [valueRef(args("id"))] };
     case "Database.CreateContainerIfNotExistsAsync":
     case "Database.CreateContainerAsync": {
       const props = args("containerProperties");
-      return { path: [props?.kind === "new" ? argRef(argsOf(props.items)("id")) : argRef(args("id"))] };
+      return { path: [props?.kind === "new" ? valueRef(argsOf(props.items)("id")) : valueRef(args("id"))] };
     }
     case "DatabaseResponse.get_Database":
     case "ContainerResponse.get_Container":
@@ -285,7 +286,7 @@ class Resolver {
   private readonly assignments = new Map<string, AssignmentFact[]>();
   private readonly creationsByType = new Map<string, { creation: InvocationFact; projectId: string }[]>();
 
-  constructor(private readonly index: SemanticIndex, readonly registrations: SdkRegistration[], private readonly appProjects: (projectId: string) => Set<string>) {
+  constructor(private readonly index: SemanticIndex, readonly registrations: SdkRegistration[], private readonly appProjects: (projectId: string) => Set<string>, private readonly options: OptionBindings) {
     for (const f of index.facts) {
       for (const a of f.assignments ?? []) this.assignments.set(a.member.key, [...(this.assignments.get(a.member.key) ?? []), a]);
       for (const c of f.creations ?? []) {
@@ -293,6 +294,10 @@ class Resolver {
         this.creationsByType.set(t, [...(this.creationsByType.get(t) ?? []), { creation: c, projectId: f.projectId }]);
       }
     }
+  }
+
+  value(value: ArgValue | undefined, projectId: string): ValueRef | null {
+    return argRef(value, 0, (property) => this.options.resolve(property, projectId));
   }
 
   /** Address of a client produced by the SDK type `type`, as configured by DI in the application of `projectId`. */
@@ -306,7 +311,7 @@ class Resolver {
     const created = (this.creationsByType.get(type) ?? []).filter((c) => scope.has(c.projectId));
     if (created.length === 1 && depth < 4) {
       const c = created[0]!;
-      const step = stepOf(type, ".ctor", argsOf(c.creation.arguments));
+      const step = stepOf(type, ".ctor", argsOf(c.creation.arguments), (a) => this.value(a, projectId));
       if (step) return finish(service, { ...step }, [`new ${short(type)}(...) at ${c.creation.location.file}:${c.creation.location.line} (the only construction site in the application)`], "INFERRED");
     }
     return created.length > 1 ? `${created.length} ${short(type)} construction sites in the application; the injected instance is ambiguous` : `${short(type)} is injected and no registration or construction is visible in the application`;
@@ -317,7 +322,7 @@ class Resolver {
     if (a.kind === "new" && a.symbol) {
       const type = typeOf(a.type);
       const service = serviceOf(type);
-      const step = service ? stepOf(type, ".ctor", argsOf(a.items)) : null;
+      const step = service ? stepOf(type, ".ctor", argsOf(a.items), (a) => this.value(a, projectId)) : null;
       return service && step ? finish(service, step, [`new ${short(type)}(...)`], "COMPILER_RESOLVED") : `construction of ${short(type)} is not an analyzed client factory`;
     }
     if (a.kind === "invocation" && a.symbol) {
@@ -328,7 +333,7 @@ class Resolver {
         const key = a.items?.find((x) => x.parameter === "serviceKey");
         return t ? this.fromContainer(t, projectId, depth + 1, key?.kind === "string" ? (key.value ?? null) : null) : "service type not visible";
       }
-      const step = stepOf(owner, m, argsOf(a.items));
+      const step = stepOf(owner, m, argsOf(a.items), (a) => this.value(a, projectId));
       if (!step) return `${short(owner)}.${m} is not an analyzed client factory`;
       const base = this.fromContainer(owner, projectId, depth + 1);
       return typeof base === "string" ? base : merge(base, step, `${short(owner)}.${m}(...)`);
@@ -369,7 +374,7 @@ class Resolver {
       const isCtor = r.invocationTarget.kind === "Constructor" || short(owner) === m;
       if (isCtor) {
         const service = serviceOf(owner);
-        const step = service ? stepOf(owner, ".ctor", argsOf(r.invocationArguments)) : null;
+        const step = service ? stepOf(owner, ".ctor", argsOf(r.invocationArguments), (a) => this.value(a, projectId)) : null;
         return service && step ? finish(service, step, [`new ${short(owner)}(...)`], "COMPILER_RESOLVED") : `construction of ${short(owner)} is not an analyzed client factory`;
       }
       if (/^Microsoft\.Extensions\.DependencyInjection\.ServiceProvider(Service|KeyedService)Extensions$/.test(owner) && /^Get(Required)?(Keyed)?Service$/.test(m)) {
@@ -377,7 +382,7 @@ class Resolver {
         const key = r.invocationArguments?.find((x) => x.parameter === "serviceKey");
         return t ? this.fromContainer(t, projectId, depth + 1, key?.kind === "string" ? (key.value ?? null) : null) : "service type not visible";
       }
-      const step = stepOf(owner, m, argsOf(r.invocationArguments));
+      const step = stepOf(owner, m, argsOf(r.invocationArguments), (a) => this.value(a, projectId));
       if (!step) return `${short(owner)}.${m} is not an analyzed client factory`;
       const base = this.fromReceiver(r.receiver, owner, projectId, depth + 1, callerKey);
       return typeof base === "string" ? base : merge(base, step, `${short(owner)}.${m}(...)`);
@@ -391,8 +396,9 @@ class Resolver {
       const results = assigned.map((a) => this.fromAssignment(a, projectId, depth + 1, callerKey));
       const found = results.filter((x): x is ResourceAddress => typeof x !== "string");
       const distinct = new Set(found.map((x) => JSON.stringify([x.account, x.path, x.connection])));
-      if (found.length && distinct.size === 1) return { ...found[0]!, via: [`${r.symbol.display} assigned from ${found[0]!.via.join(" → ")}`] };
+      if (found.length === results.length && found.length && distinct.size === 1) return { ...found[0]!, via: [`${r.symbol.display} assigned from ${found[0]!.via.join(" → ")}`] };
       if (distinct.size > 1) return `${r.symbol.display} is assigned ${distinct.size} different clients`;
+      if (assigned.length) return `${r.symbol.display} has an assignment whose client identity is not statically known`;
       return this.fromContainer(typeOf(r.type) || ownerType, projectId, depth + 1);
     }
     return this.fromContainer(typeOf(r.type) || ownerType, projectId, depth + 1);
@@ -434,15 +440,17 @@ function factoryRegistrations(index: SemanticIndex, resolver: Resolver): SdkRegi
   for (const { invocation, owner, method, project } of index.invocations) {
     if (!owner || !DI_ADD.test(owner) || !/^(Try)?Add(Keyed)?(Singleton|Scoped|Transient)$/.test(method)) continue;
     const lambda = invocation.arguments.find((a) => a.kind === "lambda" && a.location);
-    const clientType = typeOf(lambda?.returnedType ?? invocation.typeArguments[0]);
-    if (!lambda?.location || !serviceOf(clientType)) continue;
-    const span = lambda.location;
+    const factory = invocation.arguments.find((a) => a.kind === "method" && a.symbol);
+    const declaration = factory?.symbol ? index.symbols.get(factory.symbol.key)?.symbol : undefined;
+    const clientType = typeOf(lambda?.returnedType ?? declaration?.returnType ?? invocation.typeArguments[0]);
+    const span = lambda?.location ?? declaration?.location;
+    if (!span || !serviceOf(clientType)) continue;
     const inside = index.invocations
       .filter((x) => x.invocation.location.file === span.file && within(x.invocation.location, span) && stepOf(x.owner ?? "", x.method, argsOf(x.invocation.arguments)))
       .sort((a, b) => (b.invocation.location.endLine * 100000 + b.invocation.location.endColumn - a.invocation.location.line * 0) - (a.invocation.location.endLine * 100000 + a.invocation.location.endColumn));
-    const created = index.facts.flatMap((f) => (f.creations ?? []).filter((c) => typeOf(c.receiverType) === clientType && c.location.file === span.file && within(c.location, span)));
+    const created = index.facts.flatMap((f) => (f.creations ?? []).filter((c) => typeOf(c.receiverType) === clientType && (factory?.symbol ? c.caller === factory.symbol.key : c.location.file === span.file && within(c.location, span))));
     if (created.length === 1) {
-      const step = stepOf(clientType, ".ctor", argsOf(created[0]!.arguments));
+      const step = stepOf(clientType, ".ctor", argsOf(created[0]!.arguments), (a) => resolver.value(a, project.entityId));
       const keyArg = invocation.arguments.find((a) => a.parameter === "serviceKey");
       if (step) {
         out.push({ projectId: project.entityId, clientType, location: invocation.location, key: keyArg?.kind === "string" ? (keyArg.value ?? null) : null, address: finish(serviceOf(clientType)!, step, [`new ${short(clientType)}(...) in ${method}<${short(clientType)}> factory registration`], "COMPILER_RESOLVED") });
@@ -451,7 +459,7 @@ function factoryRegistrations(index: SemanticIndex, resolver: Resolver): SdkRegi
     }
     const outer = inside.find((x) => !inside.some((y) => y !== x && within(x.invocation.location, y.invocation.location) && !(y.invocation.location.line === x.invocation.location.line && y.invocation.location.column === x.invocation.location.column)));
     if (!outer) continue;
-    const step = stepOf(outer.owner!, outer.method, argsOf(outer.invocation.arguments))!;
+    const step = stepOf(outer.owner!, outer.method, argsOf(outer.invocation.arguments), (a) => resolver.value(a, project.entityId))!;
     const base = resolver.fromReceiver(outer.invocation.receiver, outer.owner!, project.entityId, 1, outer.invocation.caller);
     if (typeof base === "string") continue;
     const keyArg = invocation.arguments.find((a) => a.parameter === "serviceKey");
@@ -496,7 +504,10 @@ export const azureSdkPlugin: AnalysisPlugin = {
     const index = semanticIndex(ctx);
     if (!index) return;
     facts.registrations = registrationsOf(index);
-    const resolver = new Resolver(index, facts.registrations, appProjectsOf(ctx, index));
+    const scope = appProjectsOf(ctx, index);
+    const options = new OptionBindings(index, scope);
+    await options.load(ctx);
+    const resolver = new Resolver(index, facts.registrations, scope, options);
     for (const reg of factoryRegistrations(index, resolver)) facts.registrations.push(reg);
     const entraId = () => ctx.graph.entity({
       key: azureKeys.entraId(), kind: "ExternalSystem", layer: "infrastructure", name: "Microsoft Entra ID", qualifiedName: "azure:entra-id", repositoryId: null, external: true,
@@ -506,7 +517,9 @@ export const azureSdkPlugin: AnalysisPlugin = {
 
     const usage = (entry: IndexedInvocation, rule: OperationRule, ownerType: string) => {
       const { invocation, project } = entry;
-      const address = resolver.fromReceiver(invocation.receiver, ownerType, project.entityId, 0, invocation.caller);
+      let address = resolver.fromReceiver(invocation.receiver, ownerType, project.entityId, 0, invocation.caller);
+      const contribution = stepOf(ownerType, entry.method, argsOf(invocation.arguments), (a) => resolver.value(a, project.entityId));
+      if (typeof address !== "string" && contribution) address = merge(address, contribution, `${short(ownerType)}.${entry.method}(...)`);
       const service = serviceOf(ownerType)!;
       const details: Metadata = {};
       if (rule.operation === "query") {
@@ -605,4 +618,3 @@ function enclosingDbContext(index: SemanticIndex, inv: InvocationFact): SymRef |
   }
   return undefined;
 }
-

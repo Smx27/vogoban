@@ -71,6 +71,7 @@ export interface SymbolFact {
   baseTypeChain: string[];
   allInterfaces: string[];
   arity: number;
+  typeParameters?: SymRef[];
   generated: boolean;
   implicit: boolean;
   conditions?: string[];
@@ -98,7 +99,7 @@ export interface ReceiverFact {
   symbol?: SymRef;
 }
 
-/** A source field/property assigned (or initialized) from an expression involving a cloud SDK type. */
+/** A source field/property assignment involving a cloud SDK type or a compiler-proven IOptions<T> wrapper/payload type. */
 export interface AssignmentFact {
   caller: string;
   member: SymRef;
@@ -166,6 +167,7 @@ export interface SemanticProjectFacts {
   projectId: string;
   assemblyName: string;
   success: boolean;
+  hasExternalProjectReferences?: boolean;
   error?: string;
   referenceSources: string[];
   frameworks: FrameworkContext[];

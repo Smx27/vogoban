@@ -16,7 +16,7 @@ Every governance command loads policies from, in order:
 2. `$VOGOBAN_POLICIES` (same comma-separated format)
 3. `./vogoban-policies` in the current directory
 
-A directory loads every `*.yaml`/`*.yml` file in it (sorted, not recursive). A path that does not exist exits 2 with `policy path not found: <path>`. Every command except `validate-rules` refuses to run when the policies have errors.
+A directory loads every `*.yaml`/`*.yml` file in it (sorted, not recursive). An explicit `--policy` or `$VOGOBAN_POLICIES` path that does not exist exits 2 with `policy path not found: <path>`. When neither is given and `./vogoban-policies` does not exist, no policies are loaded: `governance` prints `No policies configured: add YAML policies to ./vogoban-policies or pass --policy <file|dir>.` and passes, and the listing commands print empty results. Every command except `validate-rules` refuses to run when the policies have errors.
 
 ### Format summary
 
@@ -147,7 +147,7 @@ Exit code 0 when valid, 2 when invalid. Warnings (for example an `allowed` rule 
 
 ### Common mistakes
 
-- Running it in a directory without `vogoban-policies` and without `--policy`: `policy path not found: vogoban-policies` (exit 2).
+- Running it in a directory without `vogoban-policies` and without `--policy`: nothing is validated (no policies configured).
 
 ## policies and policy
 

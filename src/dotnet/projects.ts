@@ -242,6 +242,7 @@ export const msbuildPlugin: AnalysisPlugin = {
           .map((f) => f.path.split("/").pop()!.replace(/\.razor$/, ""))
           .sort(),
         projectReferences,
+        externalProjectReferences: parsed.projectReferences.map((ref) => toRepoPath(dir, ref.include)).filter((path) => !projectIdByPath.has(path.toLowerCase())),
         packages,
         frameworks: [...assetsByFramework].flatMap(([tfm, frameworkAssets]) =>
           tfm ? [{ targetFramework: tfm, referencePaths: [...(frameworkAssets?.compileReferences ?? []), ...hintPaths], restored: frameworkAssets !== null }] : [],

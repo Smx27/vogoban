@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/notifications/notification-status-updated.schema.json",
+  "title": "NotificationStatusUpdatedEvent",
+  "description": "Published by notification-service when notification dispatch status is updated. Contract id notifications/notification-status-updated. Mirrors Vg.Enterprise.Contracts.Notifications.NotificationStatusUpdatedEvent.",
+  "type": "object",
+  "properties": {
+    "notificationId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "dispatchId": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "dispatched",
+        "failed",
+        "suppressed",
+        "pending"
+      ]
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deliveryAttempts": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "notificationId",
+    "customerId",
+    "dispatchId",
+    "status",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

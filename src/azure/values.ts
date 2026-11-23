@@ -11,7 +11,7 @@ import type { ArgValue } from "../dotnet/semantic-facts.ts";
  */
 export type ValueRef =
   | { kind: "literal"; value: string }
-  | { kind: "setting"; name: string; via: "functions-binding-expression" | "configuration" | "environment" | "connection-string" | "connection-name" | "functions-connection" }
+  | { kind: "setting"; name: string; via: "functions-binding-expression" | "configuration" | "environment" | "connection-string" | "connection-name" | "functions-connection"; projectId?: string }
   | { kind: "template"; text: string; settings: string[] }
   | { kind: "dynamic"; display: string };
 
@@ -47,15 +47,17 @@ export function bindingValue(raw: string | string[] | null | undefined): ValueRe
 const CONFIG_OWNERS = /^Microsoft\.Extensions\.Configuration\.(IConfiguration|IConfigurationSection|IConfigurationRoot|IConfigurationManager|ConfigurationManager|ConfigurationExtensions|ConfigurationBinder)$/;
 
 /** An SDK argument as a ValueRef: constants, configuration/environment lookups, templates, `new Uri(...)`. */
-export function argRef(a: ArgValue | undefined, depth = 0): ValueRef | null {
+export function argRef(a: ArgValue | undefined, depth = 0, property?: (value: ArgValue) => ValueRef | null): ValueRef | null {
   if (!a || depth > 4) return null;
+  const resolved = property?.(a);
+  if (resolved) return resolved;
   switch (a.kind) {
     case "string":
       return a.value === undefined ? { kind: "dynamic", display: "redacted literal" } : literal(a.value);
     case "template":
       return { kind: "template", text: a.value ?? "?", settings: [] };
     case "new":
-      if (/^System\.Uri$/.test(a.type?.qualifiedName ?? "")) return argRef(a.items?.[0], depth + 1);
+      if (/^System\.Uri$/.test(a.type?.qualifiedName ?? "")) return argRef(a.items?.[0], depth + 1, property);
       return { kind: "dynamic", display: `new ${a.type?.display ?? "?"}` };
     case "indexer": {
       const owner = a.symbol?.containingType?.qualifiedName ?? "";

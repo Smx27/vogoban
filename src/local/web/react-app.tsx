@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -22,6 +23,7 @@ import {
   useNodesInitialized,
   useNodesState,
   useStore,
+  useUpdateNodeInternals,
   type Edge,
   type EdgeProps,
   type Node,
@@ -68,6 +70,13 @@ import type { GraphView } from "../presentation.ts";
 import type { ImpactResult } from "../../analysis/impact.ts";
 import { layoutTopology, NODE_HEIGHT, NODE_WIDTH } from "./layout.ts";
 import { relationshipCurve, relationshipLanes } from "./relationship-path.ts";
+import { detailLevel, overviewRadius, useCanvasOverview } from "./overview.ts";
+import { OverviewEdges } from "./overview-edges.tsx";
+import {
+  declarationTechnologies,
+  technologyIcons,
+  technologyOf,
+} from "./technology-icons.ts";
 import "@xyflow/react/dist/style.css";
 
 type Detail = {
@@ -81,7 +90,13 @@ type Selection =
   | { kind: "entity"; detail: Detail }
   | { kind: "edge"; relationship: Relationship };
 type Subgraph = { entities: Entity[]; relationships: Relationship[] };
-type EntityNodeData = { entity: Entity; connections: number; dimmed: boolean };
+type DetailMode = "auto" | "overview" | "details";
+type EntityNodeData = {
+  entity: Entity;
+  connections: number;
+  dimmed: boolean;
+  detail: "overview" | "details";
+};
 type EntityNode = Node<EntityNodeData, "entity">;
 const VIEWS: {
   id: string;
@@ -161,8 +176,80 @@ async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
+function EntityIcon({ entity, size = 18 }: { entity: Entity; size?: number }) {
+  const technology = technologyOf(entity);
+  if (technology) {
+    const icon = technologyIcons[technology];
+    return (
+      <img
+        className="technology-icon"
+        data-technology={technology}
+        src={icon.src}
+        width={size}
+        height={size}
+        alt={icon.label}
+        title={icon.label}
+        draggable={false}
+      />
+    );
+  }
+  const Icon = iconOf(entity.kind);
+  return <Icon size={size} aria-hidden="true" />;
+}
+function DeclarationIcons({ entity }: { entity: Entity }) {
+  return (
+    <span className="declaration-icons">
+      {declarationTechnologies(entity).map((id) => (
+        <img
+          key={id}
+          className="technology-icon"
+          data-technology={id}
+          src={technologyIcons[id].src}
+          width={12}
+          height={12}
+          alt={`Declared with ${technologyIcons[id].label}`}
+          title={`Declared with ${technologyIcons[id].label}`}
+          draggable={false}
+        />
+      ))}
+    </span>
+  );
+}
 function EntityCard({ data, selected }: NodeProps<EntityNode>) {
-  const Icon = iconOf(data.entity.kind);
+  const showOverviewLabel = useStore((state) => state.transform[2] >= 0.48);
+  const technology = technologyOf(data.entity);
+  if (data.detail === "overview") {
+    const radius = overviewRadius(data.connections);
+    return (
+      <div
+        className={`entity-overview ${toneOf(data.entity.kind)} ${selected ? "is-selected" : ""} ${showOverviewLabel ? "show-label" : ""}`}
+        title={`${data.entity.kind}: ${data.entity.qualifiedName ?? data.entity.name} · ${data.connections} relationships`}
+      >
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={{ left: NODE_WIDTH / 2 - radius }}
+        />
+        <span
+          className="overview-glyph"
+          style={{ width: radius * 2, height: radius * 2 }}
+        >
+          <EntityIcon entity={data.entity} size={22} />
+        </span>
+        <span
+          className="overview-label"
+          style={{ top: NODE_HEIGHT / 2 + radius + 7 }}
+        >
+          {nameOf(data.entity)}
+        </span>
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={{ right: NODE_WIDTH / 2 - radius }}
+        />
+      </div>
+    );
+  }
   return (
     <div
       className={`entity-card ${toneOf(data.entity.kind)} ${selected ? "is-selected" : ""} ${data.dimmed ? "is-dimmed" : ""}`}
@@ -171,7 +258,7 @@ function EntityCard({ data, selected }: NodeProps<EntityNode>) {
       <Handle type="target" position={Position.Left} />
       <div className="node-heading">
         <span className="node-icon">
-          <Icon size={18} aria-hidden="true" />
+          <EntityIcon entity={data.entity} size={24} />
         </span>
         <div>
           <span className="node-kind">{data.entity.kind}</span>
@@ -179,7 +266,15 @@ function EntityCard({ data, selected }: NodeProps<EntityNode>) {
         </div>
       </div>
       <div className="node-footer">
-        <span>{data.entity.language ?? data.entity.layer}</span>
+        <span
+          className="node-technology"
+          title={technology ? technologyIcons[technology].label : undefined}
+        >
+          {technology
+            ? technologyIcons[technology].label
+            : (data.entity.language ?? data.entity.layer)}
+          <DeclarationIcons entity={data.entity} />
+        </span>
         <span>
           <GitBranch size={12} aria-hidden="true" />
           {data.connections} {data.connections === 1 ? "link" : "links"}
@@ -248,6 +343,7 @@ const EDGE_TYPES = { relationship: RelationshipLine };
 function App() {
   const [view, setView] = useState("architecture");
   const [complete, setComplete] = useState(false);
+  const [detailMode, setDetailMode] = useState<DetailMode>("auto");
   const [graph, setGraph] = useState<GraphView | null>(null);
   const [status, setStatus] = useState<{
     repository: {
@@ -278,7 +374,19 @@ function App() {
   const [nodes, setNodes, onNodesChange] = useNodesState<EntityNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [zoom, setZoom] = useState(100);
+  const level = detailLevel(detailMode, zoom / 100);
+  const layoutMode = detailMode === "details" ? "details" : "overview";
+  const overviewPicker = useRef<
+    ((point: { x: number; y: number }) => string | null) | null
+  >(null);
+  const registerOverviewPicker = useCallback(
+    (picker: ((point: { x: number; y: number }) => string | null) | null) => {
+      overviewPicker.current = picker;
+    },
+    [],
+  );
   const nodesInitialized = useNodesInitialized();
+  const updateInternals = useUpdateNodeInternals();
   const searchRef = useRef<HTMLInputElement>(null);
   const selectionRequest = useRef(0);
   const currentView = VIEWS.find((item) => item.id === view)!;
@@ -295,6 +403,7 @@ function App() {
       ) ?? []
     );
   }, [graph, visibleEntities]);
+  const canvasOverview = useCanvasOverview(level, visibleRelationships.length);
   const listedRelationships = useMemo(() => {
     const hiddenIds = new Set(
       graph?.entities
@@ -313,6 +422,12 @@ function App() {
     [graph],
   );
   useEffect(() => setRelationshipPage(0), [graph, hidden]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() =>
+      updateInternals(visibleEntities.map((entity) => entity.id)),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [level, visibleEntities, updateInternals]);
   const degree = useMemo(() => {
     const result = new Map<string, number>();
     for (const relationship of visibleRelationships)
@@ -368,7 +483,11 @@ function App() {
     return () => controller.abort();
   }, [view, complete]);
   useEffect(() => {
-    const positions = layoutTopology(visibleEntities, visibleRelationships);
+    const positions = layoutTopology(
+      visibleEntities,
+      visibleRelationships,
+      layoutMode,
+    );
     setNodes(
       visibleEntities.map((entity) => ({
         id: entity.id,
@@ -380,12 +499,13 @@ function App() {
           entity,
           connections: degree.get(entity.id) ?? 0,
           dimmed: false,
+          detail: level,
         },
         ariaLabel: `${entity.kind}: ${nameOf(entity)}`,
         selected: false,
       })),
     );
-  }, [visibleEntities, visibleRelationships, degree, setNodes]);
+  }, [visibleEntities, visibleRelationships, degree, setNodes, layoutMode]);
   useEffect(() => {
     const hits = new Set(matches.map((entity) => entity.id));
     setNodes((current) =>
@@ -396,6 +516,7 @@ function App() {
         data: {
           ...node.data,
           dimmed: false,
+          detail: level,
         },
       })),
     );
@@ -417,7 +538,13 @@ function App() {
             lane: lanes.get(relationship.id) ?? 0,
             self: relationship.sourceId === relationship.targetId,
           },
-          label: edgeLabels || active ? relationship.type : undefined,
+          label:
+            edgeLabels ||
+            relationship.id ===
+              (selection?.kind === "edge" ? selection.relationship.id : null) ||
+            (active && level === "details")
+              ? relationship.type
+              : undefined,
           markerEnd: {
             type: MarkerType.ArrowClosed,
             color: active ? "#80c6b5" : "#626b77",
@@ -453,6 +580,7 @@ function App() {
     edgeLabels,
     complete,
     focused,
+    level,
     setNodes,
     setEdges,
   ]);
@@ -460,7 +588,7 @@ function App() {
     if (!nodesInitialized) return;
     const timer = window.setTimeout(fit, 90);
     return () => clearTimeout(timer);
-  }, [visibleEntities, fit, nodesInitialized, inspector]);
+  }, [visibleEntities, fit, nodesInitialized, inspector, layoutMode]);
   useEffect(() => {
     if (!query.trim()) {
       setMatches([]);
@@ -524,13 +652,24 @@ function App() {
     },
     [view],
   );
-  const explore = async (id = selectedId, replace = false, depth = 1) => {
+  const selectRelationship = useCallback(
+    (id: string) => {
+      const relationship = graph?.relationships.find((item) => item.id === id);
+      if (!relationship) return;
+      selectionRequest.current++;
+      setBusy(null);
+      setSelection({ kind: "edge", relationship });
+      setInspector(true);
+    },
+    [graph],
+  );
+  const explore = async (id = selectedId, replace = false) => {
     if (!id || !graph) return;
-    setBusy(`Exploring ${depth}-hop neighborhood`);
+    setBusy("Exploring neighborhood");
     setError(null);
     try {
       const neighborhood = await api<Subgraph>(
-        `/api/entity/${encodeURIComponent(id)}/neighborhood?depth=${depth}&meta=${view === "meta" ? "1" : "0"}`,
+        `/api/entity/${encodeURIComponent(id)}/neighborhood?depth=1&meta=${view === "meta" ? "1" : "0"}`,
       );
       const entities = [
         ...new Map(
@@ -607,17 +746,15 @@ function App() {
   const searchSelect = (entity: Entity) => {
     setShowSearch(false);
     void selectEntity(entity.id);
-    if (!visibleEntities.some((item) => item.id === entity.id)) {
-      void explore(entity.id, true, 1);
-    } else {
-      void explore(entity.id, false, 1);
+    if (!visibleEntities.some((item) => item.id === entity.id))
+      void explore(entity.id, true);
+    else
       void flow?.fitView({
         nodes: [{ id: entity.id }],
         maxZoom: 1,
         duration: duration(),
         padding: 0.8,
       });
-    }
   };
   const repositoryName = status?.repository?.name ?? "Repository graph";
   const total = graph?.entities.length ?? 0;
@@ -771,13 +908,12 @@ function App() {
                     : `${matches.length} matching entities`}
                 </div>
                 {matches.map((entity) => {
-                  const Icon = iconOf(entity.kind);
                   return (
                     <button
                       key={entity.id}
                       onClick={() => searchSelect(entity)}
                     >
-                      <Icon size={17} aria-hidden="true" />
+                      <EntityIcon entity={entity} size={17} />
                       <span>
                         <strong>{nameOf(entity)}</strong>
                         <small>{entity.kind}</small>
@@ -865,11 +1001,36 @@ function App() {
             </button>
           </div>
           <span className="toolbar-divider" />
+          {!textView && (
+            <label className="graph-detail-control">
+              <span>Detail</span>
+              <select
+                aria-label="Graph detail"
+                value={detailMode}
+                onChange={(event) =>
+                  setDetailMode(event.target.value as DetailMode)
+                }
+              >
+                <option value="auto">Auto</option>
+                <option value="overview">Overview</option>
+                <option value="details">Details</option>
+              </select>
+            </label>
+          )}
           <span className="toolbar-stat">
             {visibleEntities.length} entities<span> / </span>
             {visibleRelationships.length} relationships
           </span>
           <div className="toolbar-right">
+            {!textView && (
+              <span className="rendering-hint">
+                {level === "overview"
+                  ? canvasOverview
+                    ? "Overview · Canvas"
+                    : "Overview"
+                  : "Details"}
+              </span>
+            )}
             <button
               className={`toolbar-button ${edgeLabels ? "enabled" : ""}`}
               aria-pressed={edgeLabels}
@@ -951,10 +1112,7 @@ function App() {
                   .map((relationship) => (
                     <button
                       key={relationship.id}
-                      onClick={() => {
-                        setSelection({ kind: "edge", relationship });
-                        setInspector(true);
-                      }}
+                      onClick={() => selectRelationship(relationship.id)}
                     >
                       <span>
                         {nameOf(
@@ -1015,14 +1173,13 @@ function App() {
                   <span>Relationships</span>
                 </div>
                 {visibleEntities.map((entity) => {
-                  const Icon = iconOf(entity.kind);
                   return (
                     <button
                       key={entity.id}
                       onClick={() => void selectEntity(entity.id)}
                     >
                       <span>
-                        <Icon size={17} aria-hidden="true" />
+                        <EntityIcon entity={entity} size={17} />
                         {nameOf(entity)}
                       </span>
                       <span>{entity.kind}</span>
@@ -1036,24 +1193,61 @@ function App() {
               </div>
             ) : graph && visibleEntities.length ? (
               <ReactFlow<EntityNode>
+                style={
+                  {
+                    "--overview-border": `${Math.min(5, 125 / zoom)}px`,
+                  } as CSSProperties
+                }
+                onKeyDownCapture={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  if (!(event.target instanceof Element)) return;
+                  const id = event.target.getAttribute("data-id");
+                  if (!id) return;
+                  if (event.target.classList.contains("react-flow__node")) {
+                    event.preventDefault();
+                    void selectEntity(id);
+                  } else if (
+                    event.target.classList.contains("react-flow__edge")
+                  ) {
+                    event.preventDefault();
+                    selectRelationship(id);
+                  }
+                }}
                 nodes={nodes}
-                edges={edges}
+                edges={canvasOverview ? [] : edges}
                 nodeTypes={NODE_TYPES}
                 edgeTypes={EDGE_TYPES}
                 onInit={setFlow}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onNodeClick={(_, node) => void selectEntity(node.id)}
-                onEdgeClick={(_, edge) => {
-                  const relationship = graph.relationships.find(
-                    (item) => item.id === edge.id,
-                  );
-                  if (relationship) {
-                    selectionRequest.current++;
-                    setBusy(null);
-                    setSelection({ kind: "edge", relationship });
-                    setInspector(true);
+                onEdgeClick={(_, edge) => selectRelationship(edge.id)}
+                onPaneClick={(event) => {
+                  if (!canvasOverview || !flow) return;
+                  const point = flow.screenToFlowPosition({
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
+                  if (flow.getZoom() < 0.22) {
+                    let nearest: EntityNode | null = null;
+                    let distance = 7 / flow.getZoom();
+                    for (const node of nodes) {
+                      const candidate = Math.hypot(
+                        point.x - node.position.x - NODE_WIDTH / 2,
+                        point.y - node.position.y - NODE_HEIGHT / 2,
+                      );
+                      if (candidate <= distance) {
+                        nearest = node;
+                        distance = candidate;
+                      }
+                    }
+                    if (nearest) {
+                      void selectEntity(nearest.id);
+                      return;
+                    }
                   }
+                  const id = overviewPicker.current?.(point);
+                  if (id) selectRelationship(id);
                 }}
                 onMove={(_, viewport) =>
                   setZoom(Math.round(viewport.zoom * 100))
@@ -1069,6 +1263,20 @@ function App() {
                 }}
               >
                 <Background color="#2a2e35" gap={22} size={1} />
+                {canvasOverview && (
+                  <OverviewEdges
+                    nodes={nodes}
+                    relationships={visibleRelationships}
+                    selectedId={selectedId}
+                    selectedRelationshipId={
+                      selection?.kind === "edge"
+                        ? selection.relationship.id
+                        : null
+                    }
+                    labels={edgeLabels}
+                    onPicker={registerOverviewPicker}
+                  />
+                )}
                 <Controls showInteractive={false} position="bottom-left" />
                 <MiniMap<EntityNode>
                   nodeColor={(node) =>
@@ -1147,8 +1355,8 @@ function App() {
               leaders={leaders}
               degree={degree}
               selectEntity={selectEntity}
-              expand={(depth = 1) => void explore(selectedId, false, depth)}
-              focus={() => void explore(selectedId, true, 1)}
+              expand={() => void explore()}
+              focus={() => void explore(selectedId, true)}
               impact={impact}
               traceImpact={() => void traceImpact()}
               close={() => setInspector(false)}
@@ -1195,7 +1403,7 @@ function Inspector({
   leaders: Entity[];
   degree: Map<string, number>;
   selectEntity: (id: string) => Promise<void>;
-  expand: (depth?: number) => void;
+  expand: () => void;
   focus: () => void;
   impact: ImpactResult | null;
   traceImpact: () => void;
@@ -1207,11 +1415,7 @@ function Inspector({
   const edge = selection?.kind === "edge" ? selection.relationship : null;
   const detail = selection?.kind === "entity" ? selection.detail : null;
   const entity = detail?.entity;
-  const Icon = entity
-    ? iconOf(entity.kind)
-    : edge
-      ? GitBranch
-      : LayoutDashboard;
+  const Icon = edge ? GitBranch : LayoutDashboard;
   const linkRow = (item: Linked, direction: "in" | "out") => (
     <div className="relationship-row" key={item.relationship.id}>
       <span className="direction-icon">
@@ -1256,7 +1460,11 @@ function Inspector({
         <div
           className={`inspector-icon ${entity ? toneOf(entity.kind) : "neutral"}`}
         >
-          <Icon size={22} aria-hidden="true" />
+          {entity ? (
+            <EntityIcon entity={entity} size={28} />
+          ) : (
+            <Icon size={22} aria-hidden="true" />
+          )}
         </div>
         <h2>
           {entity
@@ -1272,6 +1480,16 @@ function Inspector({
               ? "A stored relationship, backed by graph evidence."
               : "Select an entity to explore its relationships, source evidence, and change impact."}
         </p>
+        {entity &&
+          (technologyOf(entity) ||
+            declarationTechnologies(entity).length > 0) && (
+            <div className="inspector-technology">
+              {technologyOf(entity)
+                ? technologyIcons[technologyOf(entity)!].label
+                : null}
+              <DeclarationIcons entity={entity} />
+            </div>
+          )}
         {detail && (
           <>
             <div className="entity-identity">
@@ -1290,20 +1508,10 @@ function Inspector({
               <button
                 className="button secondary"
                 disabled={busy}
-                onClick={() => expand(1)}
-                title="Expand 1-hop neighborhood"
+                onClick={expand}
               >
                 <Expand size={14} />
-                +1 Hop
-              </button>
-              <button
-                className="button secondary"
-                disabled={busy}
-                onClick={() => expand(2)}
-                title="Expand 2-hop neighborhood"
-              >
-                <Expand size={14} />
-                +2 Hops
+                Expand
               </button>
             </div>
             <div className="inspector-tabs" aria-label="Entity detail sections">

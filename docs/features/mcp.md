@@ -11,7 +11,7 @@ Two transports are available:
 
 ## Local server over stdio
 
-`vogoban mcp` speaks JSON-RPC 2.0 over stdin/stdout, one message per line, and supports MCP protocol versions `2025-06-18`, `2025-03-26` and `2024-11-05`. It prints a one-line banner on stderr and serves until stdin closes.
+`vogoban mcp` speaks JSON-RPC 2.0 over stdin/stdout, one message per line (a line may also hold a JSON-RPC batch array, answered with an array), and supports MCP protocol versions `2025-06-18`, `2025-03-26` and `2024-11-05`. It prints a one-line banner on stderr and serves until stdin closes.
 
 Scope it like any other command:
 
@@ -19,7 +19,7 @@ Scope it like any other command:
 vogoban mcp --db ~/azure-demo/meta/graph.db --repo contoso-orders,contoso-fulfillment --env production
 ```
 
-`--repo`, `--env`, `--scope` and `--at` restrict every tool, resource and prompt. An entity outside the scope is reported as not found. Because an MCP client usually starts the server in a directory of its own choosing, always pass `--db` with an absolute path (or set `VOGOBAN_DB`); the default store is `./.vogoban/graph.db` relative to the current directory.
+`--repo`, `--env`, `--scope` and `--at` restrict every tool, resource and prompt. An entity outside the scope is reported as not found. With `--scope repository`, MetaGraph entities, `get_repository_dependencies` and MetaGraph snapshots are out of scope. Because an MCP client usually starts the server in a directory of its own choosing, always pass `--db` with an absolute path (or set `VOGOBAN_DB`); the default store is `./.vogoban/graph.db` relative to the current directory.
 
 ### Client configuration
 

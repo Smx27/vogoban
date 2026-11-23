@@ -59,6 +59,8 @@ const VIEWS: Record<string, EntityKind[]> = {
     "DataStore",
   ],
   infrastructure: [
+    "HelmChart",
+    "HelmRelease",
     "Repository",
     "Application",
     "Deployment",

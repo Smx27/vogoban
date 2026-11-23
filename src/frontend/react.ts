@@ -1,4 +1,5 @@
 import type * as TS from "typescript-compiler";
+import { normalizePath } from "../contracts/routes.ts";
 import type { EvidenceLevel, Metadata, RelationshipType } from "../graph/model.ts";
 import type { AnalysisContext, AnalysisPlugin } from "../plugins/types.ts";
 import { cachedProjectAnalysis, FRONTEND_VERSION, frontendKeys, frontendProvenance, within, type Recorder } from "./common.ts";
@@ -131,6 +132,14 @@ function analyzeReact(ctx: AnalysisContext, rec: Recorder, view: TsProgramView):
   view.eachFile(fileFailed, visit);
 
   // Routes
+  if (pkg.frameworks.includes("nextjs") && !pkg.applications.length) {
+    const handler = view.sourceFiles.find((sf) => /^(?:src\/)?app\/(?:.*\/)?route\.(t|j)s$/.test(view.repoPath(sf).slice(pkg.dir ? pkg.dir.length + 1 : 0)));
+    if (handler) {
+      const entityId = rec.entity({ key: frontendKeys.application(repoId, pkg.dir, "nextjs"), kind: "Application", layer: "application", name: pkg.name, qualifiedName: `nextjs:${pkg.dir || "."}`, repositoryId: repoId, projectId: pkg.entityId, language: "typescript", metadata: { applicationType: "frontend", applicationKind: "frontend:nextjs", framework: "nextjs", runtime: "node", root: pkg.dir, signals: ["next dependency", "app/ route handler"] }, provenance: prov("next-api-application", handler) });
+      relate("DEFINES_APPLICATION", pkg.entityId, entityId, handler, "DECLARED");
+      pkg.applications.push({ entityId, framework: "nextjs", name: pkg.name, root: pkg.dir, signals: ["next dependency", "app/ route handler"] });
+    }
+  }
   const app = (file: string) => pkg.applications.filter((a) => within(a.root, file)).sort((a, b) => b.root.length - a.root.length)[0] ?? pkg.applications[0] ?? null;
   const routeEntity = (full: string, at: TS.Node, meta: Metadata, framework = "react-router") => {
     const l = view.loc(at);
@@ -272,6 +281,26 @@ function analyzeReact(ctx: AnalysisContext, rec: Recorder, view: TsProgramView):
   if (pkg.frameworks.includes("nextjs")) {
     for (const sf of view.sourceFiles) {
       const rel = view.repoPath(sf).slice(pkg.dir ? pkg.dir.length + 1 : 0);
+      const handlerMatch = /^(?:src\/)?app\/(.*\/)?route\.(t|j)s$/.exec(rel);
+      if (handlerMatch && !(handlerMatch[1] ?? "").split("/").some((s) => s.startsWith("@") || /^\(\./.test(s))) {
+        const owner = app(view.repoPath(sf));
+        if (!owner) continue;
+        const path = `/${(handlerMatch[1] ?? "").split("/").filter((s) => s && !/^\(.*\)$/.test(s)).join("/")}`.replace(/\[\[?\.\.\.(\w+)\]?\]/g, "{*$1}").replace(/\[(\w+)\]/g, "{$1}");
+        const { display, shape } = normalizePath(path);
+        for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]) {
+          const exported = moduleExport(view, view.repoPath(sf), method);
+          if (!exported.decl || !exported.refs.length || !view.checker.getTypeAtLocation(exported.decl).getCallSignatures().length) continue;
+          const at = exported.decl;
+          const apiKey = `api|${repoId}|nextjs|${owner.root}`;
+          const apiId = rec.entity({ key: apiKey, kind: "Api", layer: "contract", name: `${owner.name} API`, qualifiedName: `${owner.name} (Next.js)`, repositoryId: repoId, projectId: pkg.entityId, metadata: { contractSource: "nextjs-app-router", provider: owner.name, framework: "nextjs" }, provenance: prov("next-api-provider", sf) });
+          relate("CONTAINS", owner.entityId, apiId, sf, "DECLARED", { role: "api-provider" });
+          const l = view.loc(at);
+          const operation = rec.entity({ key: `api-operation|${apiKey}|${method}|${shape}`, kind: "ApiOperation", layer: "contract", name: `${method} ${display}`, qualifiedName: `${owner.name}:${method} ${display}`, repositoryId: repoId, projectId: pkg.entityId, language: /\.ts$/.test(rel) ? "typescript" : "javascript", location: { file: l.file, startLine: l.line, startColumn: l.column }, metadata: { contractSource: "nextjs-app-router", framework: "nextjs", method, path: display, routeShape: shape, implementationStatus: "implemented" }, provenance: prov("next-api-operation", at) });
+          relate("CONTAINS", apiId, operation, at, "DECLARED");
+          for (const ref of exported.refs) relate("IMPLEMENTED_BY", operation, ensureDecl(ctx, rec, view, ref, ID), at, "COMPILER_RESOLVED", { convention: "nextjs-route-handler" });
+        }
+        continue;
+      }
       const appMatch = /^(?:src\/)?app\/(.*?)(?:^|\/)?page\.(t|j)sx?$/.exec(rel);
       const pagesMatch = /^(?:src\/)?pages\/(.*)\.(t|j)sx?$/.exec(rel);
       let route: string | null = null;

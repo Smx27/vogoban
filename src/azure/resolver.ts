@@ -6,6 +6,7 @@ import { APPLICATIONS } from "../dotnet/frameworks/applications.ts";
 import { routeShape } from "../dotnet/frameworks/aspnetcore/endpoints.ts";
 import { entityIdOf, semanticIndex } from "../dotnet/frameworks/shared.ts";
 import { isContractType, MessagingGraph } from "../dotnet/frameworks/messaging/model.ts";
+import { SERVICE_BUS_TRIGGER_PAYLOADS } from "../dotnet/frameworks/messaging/azure-service-bus.ts";
 import type { FactLocation } from "../dotnet/semantic-facts.ts";
 import type { AnalysisContext, AnalysisPlugin } from "../plugins/types.ts";
 import { AZURE_ASPIRE, type AspireResource } from "./aspire.ts";
@@ -146,7 +147,7 @@ export const azureResolverPlugin: AnalysisPlugin = {
         return v ? [{ ...v, host: h }] : [];
       });
       const local = appsettings
-        .filter((e) => lower(e.name.replace(/:/g, "__")) === key && typeof e.metadata.value === "string" && (dir === "" || (e.location?.file ?? "").startsWith(`${dir}/`)))
+        .filter((e) => lower(e.name.replace(/:/g, "__")) === key && typeof e.metadata.value === "string" && (e.projectId ? e.projectId === projectId : dir === "" || (e.location?.file ?? "").startsWith(`${dir}/`)))
         .map((e) => ({ value: e.metadata.value as string, entity: e }));
       return { iac, local };
     };
@@ -189,7 +190,7 @@ export const azureResolverPlugin: AnalysisPlugin = {
         const a = address.account;
         if (a.kind === "literal") fromLiteral(a.value, "client endpoint literal");
         if (a.kind === "setting") {
-          const { iac, local } = settingValue(projectId, dir, a.name);
+          const { iac, local } = settingValue(a.projectId ?? projectId, a.projectId ? dirOf(a.projectId) : dir, a.name);
           for (const s of iac) fromSym(s.value, `app setting ${a.name} on ${s.host.name}`);
           for (const l of local) fromLiteral(l.value, `${l.entity.metadata.source} ${a.name}`);
         }
@@ -231,7 +232,7 @@ export const azureResolverPlugin: AnalysisPlugin = {
       if (!v) return { literal: null, symbols: [], display: "?", state: "unresolved", via: null };
       if (v.kind === "literal") return blank(v.value) ? { literal: null, symbols: [], display: "?", state: "unresolved", via: null } : { literal: v.value, symbols: [], display: v.value, state: "exact", via: null };
       if (v.kind === "setting") {
-        const { iac, local } = settingValue(projectId, dir, v.name);
+        const { iac, local } = settingValue(v.projectId ?? projectId, v.projectId ? dirOf(v.projectId) : dir, v.name);
         const iacLits = [...new Set(iac.map((s) => litString(s.value)).filter((x): x is string => !blank(x)))];
         if (iacLits.length === 1) return { literal: iacLits[0]!, symbols: [], display: iacLits[0]!, state: "statically-derived", via: `app setting ${v.name} = '${iacLits[0]}' on ${iac[0]!.host.name}` };
         if (iac.length) return { literal: null, symbols: iac.map((s) => s.value), display: displayRef(v), state: "partially-resolved", via: `app setting ${v.name} on ${iac.map((s) => s.host.name).join(", ")}` };
@@ -405,6 +406,13 @@ export const azureResolverPlugin: AnalysisPlugin = {
       }
       if (b.direction === "trigger") {
         azRelate(ctx, b.type === "cosmosDB" ? "CHANGE_FEED" : "TRIGGERS", targetId, fn.entityId, "COMPILER_RESOLVED", p, meta);
+        if (messaging && b.type === "serviceBus" && fn.handlerKey) {
+          for (const payload of ctx.artifacts.get(SERVICE_BUS_TRIGGER_PAYLOADS) ?? []) {
+            if (payload.caller !== fn.handlerKey || payload.parameter !== b.target) continue;
+            const messageId = messaging.message(payload.payload, "message", payload.location, "FUNCTION_TRIGGER_DESERIALIZED_PAYLOAD");
+            if (messageId) messaging.consume(messageId, fn.handlerKey, targetId, payload.triggerLocation, "FUNCTION_TRIGGER_DESERIALIZED_PAYLOAD", "COMPILER_RESOLVED", { function: fn.name });
+          }
+        }
         if (messaging && b.dataRef && isContractType(b.dataRef) && target.family.transport && (b.type === "serviceBus" || b.type === "eventHub" || b.type === "queue")) {
           const messageId = messaging.message(b.dataRef, "message", b.location ?? undefined, "FUNCTION_TRIGGER_PAYLOAD");
           if (messageId && fn.handlerKey) messaging.consume(messageId, fn.handlerKey, targetId, b.location ?? undefined, "FUNCTION_TRIGGER_PAYLOAD", "COMPILER_RESOLVED", { function: fn.name });
@@ -427,6 +435,14 @@ export const azureResolverPlugin: AnalysisPlugin = {
       if (!target) continue;
       const id = logicalEntity(target, u.location, "AZURE_SDK_USAGE");
       const p = prov("AZURE_SDK_USAGE", u.location, "roslyn-semantic-model+azure-sdk-rules");
+      if (service === "service-bus" && u.address.path.length === 2 && target.family.logical === "service-bus-subscription") {
+        const topic = resolveTarget(service, { ...u.address, path: [u.address.path[0]!] }, u.projectId, dir, callerId, u.location, "SUBSCRIBES_TO");
+        if (topic) {
+          const topicId = logicalEntity(topic, u.location, "AZURE_SDK_USAGE");
+          ctx.graph.annotate(topicId, { entityKind: "topic" }, p);
+          azRelate(ctx, "SUBSCRIBES_TO", topicId, id, "COMPILER_RESOLVED", p, { subscription: target.logicalName });
+        }
+      }
       const meta: Metadata = { client: u.clientType, method: u.method, operation: u.operation, resolution: target.state, derivation: u.address.via, credential: u.address.credential, ...u.details };
       const evidence: EvidenceLevel = u.address.evidence === "INFERRED" ? "INFERRED" : "COMPILER_RESOLVED";
       if (u.inbound) azRelate(ctx, u.relationship, id, callerId, evidence, p, meta);
@@ -468,4 +484,3 @@ export const azureResolverPlugin: AnalysisPlugin = {
     ctx.log.info("azure.resolver", { hosted: hosting.size, functions: functions?.functions.length ?? 0, sdkUsages: sdk?.usages.length ?? 0 });
   },
 };
-

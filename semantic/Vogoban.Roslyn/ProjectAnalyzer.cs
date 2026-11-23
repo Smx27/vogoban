@@ -16,6 +16,8 @@ public sealed class ProjectAnalyzer
     private readonly Dictionary<string, RelationFact> _relations = new();
     private readonly HashSet<string> _declared = new();
     private readonly HashSet<string> _unresolvedSeen = new();
+    private readonly HashSet<string> _optionTypes = new();
+    private readonly Dictionary<string, bool> _unmodifiedParameters = new();
     private readonly Dictionary<string, List<(Location Span, string Id, string Message)>> _errorsByFile = new();
     private readonly Dictionary<SyntaxTree, List<(int Start, int End, string Condition)>> _conditionalRegions = new();
 
@@ -34,6 +36,13 @@ public sealed class ProjectAnalyzer
     {
         CollectDiagnostics();
         foreach (var type in SourceTypes(_compilation.Assembly.GlobalNamespace)) DeclareType(type);
+        foreach (var tree in _compilation.SyntaxTrees)
+        {
+            var model = _compilation.GetSemanticModel(tree);
+            foreach (var generic in tree.GetRoot().DescendantNodes().OfType<GenericNameSyntax>())
+                if (model.GetTypeInfo(generic).Type is INamedTypeSymbol { TypeArguments.Length: 1 } wrapper && IsOptionsWrapper(wrapper))
+                    _optionTypes.Add(Key(wrapper.TypeArguments[0]));
+        }
         foreach (var tree in _compilation.SyntaxTrees)
         {
             if (string.IsNullOrEmpty(tree.FilePath)) continue;
@@ -277,6 +286,7 @@ public sealed class ProjectAnalyzer
             Attributes = member.GetAttributes().Select(ToAttribute).OfType<AttributeFact>().ToList(),
             ReturnAttributes = method?.GetReturnTypeAttributes() is { Length: > 0 } returnAttributes ? returnAttributes.Select(ToAttribute).OfType<AttributeFact>().ToList() : null,
             Arity = method?.Arity ?? 0,
+            TypeParameters = method is { Arity: > 0 } ? method.TypeParameters.Select(t => Ref(t)).ToList() : null,
             Generated = IsGenerated(member),
             Implicit = member.IsImplicitlyDeclared,
         };
@@ -316,6 +326,9 @@ public sealed class ProjectAnalyzer
                 case AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SimpleAssignmentExpression } assignment:
                     HandlePropertyAssignment(assignment, model);
                     HandleMemberAssignment(assignment, model);
+                    break;
+                case AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.AddAssignmentExpression } registration:
+                    HandleEventRegistration(registration, model);
                     break;
                 case VariableDeclaratorSyntax { Parent.Parent: FieldDeclarationSyntax, Initializer.Value: { } fieldInit } fieldDeclarator:
                     HandleMemberInitializer(fieldDeclarator, fieldInit, model);
@@ -472,11 +485,10 @@ public sealed class ProjectAnalyzer
         var type = model.GetTypeInfo(expression).Type;
         var inner = expression;
         var bound = model.GetSymbolInfo(expression).Symbol;
-        var symbol = bound is IFieldSymbol or IPropertySymbol or IParameterSymbol or ILocalSymbol && IsCloudSdkType(type) ? Ref(bound) : null;
+        var symbol = bound is IFieldSymbol or IPropertySymbol or IParameterSymbol or ILocalSymbol && (IsCloudSdkType(type) || IsCloudSdkType(bound.ContainingType)) ? Ref(bound) : null;
         if (expression is IdentifierNameSyntax id && model.GetSymbolInfo(id).Symbol is ILocalSymbol local)
         {
-            var declarator = local.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as VariableDeclaratorSyntax;
-            if (declarator?.Initializer?.Value is { } init) inner = init;
+            if (SingleInitializer(local, expression) is { } init) inner = init;
         }
         var awaited = inner;
         while (awaited is AwaitExpressionSyntax or ParenthesizedExpressionSyntax)
@@ -509,7 +521,7 @@ public sealed class ProjectAnalyzer
                 Symbol = symbol,
             };
         }
-        return new ReceiverFact { Expression = Truncate(expression.ToString()), Type = type == null ? null : Ref(type), Symbol = symbol };
+        return new ReceiverFact { Expression = Truncate(expression.ToString()), Type = type == null ? null : Ref(type), Symbol = symbol, Receiver = inner is MemberAccessExpressionSyntax memberAccess ? Receiver(memberAccess.Expression, model, depth + 1) : null };
     }
 
     private ArgValue Argument(ExpressionSyntax expression, SemanticModel model, string? name, int depth)
@@ -529,7 +541,7 @@ public sealed class ProjectAnalyzer
                 callable.ReturnedType = ReturnedType((AnonymousFunctionExpressionSyntax)expression, model);
                 return callable;
             }
-            case BaseObjectCreationExpressionSyntax creation when depth < 2:
+            case BaseObjectCreationExpressionSyntax creation when depth < 6:
             {
                 var ctor = model.GetSymbolInfo(creation).Symbol as IMethodSymbol;
                 var created = model.GetTypeInfo(creation).Type;
@@ -542,7 +554,7 @@ public sealed class ProjectAnalyzer
                     Items = Arguments(creation.ArgumentList, model, model.GetOperation(creation), depth + 1),
                 };
             }
-            case InvocationExpressionSyntax nested when depth < 2 && model.GetSymbolInfo(nested).Symbol is IMethodSymbol nestedMethod:
+            case InvocationExpressionSyntax nested when depth < 6 && model.GetSymbolInfo(nested).Symbol is IMethodSymbol nestedMethod:
             {
                 var resultType = model.GetTypeInfo(nested).Type;
                 return new ArgValue
@@ -567,10 +579,10 @@ public sealed class ProjectAnalyzer
                 Items = Arguments(access.ArgumentList, model, model.GetOperation(access), depth + 1),
             };
         }
-        if (depth < 3 && expression is IdentifierNameSyntax localName && model.GetSymbolInfo(localName).Symbol is ILocalSymbol localSymbol && SingleInitializer(localSymbol, localName) is { } initializer)
+        if (depth < 6 && expression is IdentifierNameSyntax localName && model.GetSymbolInfo(localName).Symbol is ILocalSymbol localSymbol && SingleInitializer(localSymbol, localName, true) is { } initializer)
         {
             var resolved = Argument(initializer, model, name, depth + 1);
-            if (resolved.Kind != "expression") return resolved;
+            if (resolved.Kind != "expression" || resolved.Symbol != null) return resolved;
         }
         var template = Template(expression, model, 0);
         if (template != null && System.Text.RegularExpressions.Regex.Replace(template, @"\{[^}]*\}", "").Length > 0)
@@ -582,7 +594,20 @@ public sealed class ProjectAnalyzer
         if (symbol is IMethodSymbol { MethodKind: MethodKind.Ordinary or MethodKind.ReducedExtension } group && expression is SimpleNameSyntax or MemberAccessExpressionSyntax)
             return new ArgValue { Name = name, Kind = "method", Symbol = Ref(group.ReducedFrom ?? group) };
         var type = model.GetTypeInfo(expression).Type;
-        return new ArgValue { Name = name, Kind = "expression", Value = Truncate(expression.ToString()), Type = type == null ? null : Ref(type) };
+        return new ArgValue { Name = name, Kind = "expression", Value = Truncate(expression.ToString()), Type = type == null ? null : Ref(type), Symbol = symbol is IPropertySymbol or IFieldSymbol || symbol is IParameterSymbol parameter && UnmodifiedParameter(parameter, model) ? Ref(symbol) : null, Items = depth < 6 && expression is MemberAccessExpressionSyntax memberAccess && symbol is IPropertySymbol ? new() { Argument(memberAccess.Expression, model, null, depth + 1) } : null };
+    }
+
+    private bool UnmodifiedParameter(IParameterSymbol parameter, SemanticModel model)
+    {
+        var key = Key(parameter);
+        if (_unmodifiedParameters.TryGetValue(key, out var cached)) return cached;
+        var body = parameter.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().Ancestors().FirstOrDefault(n => n is BaseMethodDeclarationSyntax or LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax);
+        if (body == null) return false;
+        bool ReferencesParameter(SyntaxNode node) => node.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>().Any(id => SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(id).Symbol, parameter));
+        var unmodified = !body.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(a => ReferencesParameter(a.Left))
+            && !body.DescendantNodes().OfType<ArgumentSyntax>().Any(a => !a.RefKindKeyword.IsKind(SyntaxKind.None) && ReferencesParameter(a.Expression));
+        _unmodifiedParameters[key] = unmodified;
+        return unmodified;
     }
 
     private SymRef? ReturnedType(AnonymousFunctionExpressionSyntax lambda, SemanticModel model)
@@ -596,13 +621,33 @@ public sealed class ProjectAnalyzer
         return distinct.Count == 1 ? Ref((ITypeSymbol)distinct[0]!) : null;
     }
 
-    private static ExpressionSyntax? SingleInitializer(ILocalSymbol local, SyntaxNode usage)
+    private static ExpressionSyntax? SingleInitializer(ILocalSymbol local, SyntaxNode usage, bool includeMemberWrites = false)
     {
         if (local.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() is not VariableDeclaratorSyntax { Initializer.Value: var value } declarator) return null;
         var body = declarator.FirstAncestorOrSelf<BlockSyntax>() ?? (SyntaxNode?)declarator.FirstAncestorOrSelf<CompilationUnitSyntax>();
         if (body == null) return null;
-        var reassigned = body.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(a => a.Left is IdentifierNameSyntax id && id.Identifier.Text == local.Name);
+        bool ReferencesLocal(SyntaxNode node) => node.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>().Any(id => id.Identifier.Text == local.Name);
+        var reassigned = body.DescendantNodes().OfType<AssignmentExpressionSyntax>().Any(a => includeMemberWrites ? ReferencesLocal(a.Left) : a.Left is IdentifierNameSyntax id && id.Identifier.Text == local.Name)
+            || body.DescendantNodes().OfType<ArgumentSyntax>().Any(a => !a.RefKindKeyword.IsKind(SyntaxKind.None) && ReferencesLocal(a.Expression))
+            || body.DescendantNodes().OfType<PrefixUnaryExpressionSyntax>().Any(a => a.IsKind(SyntaxKind.PreIncrementExpression) || a.IsKind(SyntaxKind.PreDecrementExpression) ? ReferencesLocal(a.Operand) : false)
+            || body.DescendantNodes().OfType<PostfixUnaryExpressionSyntax>().Any(a => a.IsKind(SyntaxKind.PostIncrementExpression) || a.IsKind(SyntaxKind.PostDecrementExpression) ? ReferencesLocal(a.Operand) : false);
         return reassigned ? null : value;
+    }
+
+    private void HandleEventRegistration(AssignmentExpressionSyntax registration, SemanticModel model)
+    {
+        if (model.GetSymbolInfo(registration.Left).Symbol is not IEventSymbol ev || !IsCloudSdkType(ev.ContainingType)) return;
+        var caller = CallerKey(registration, model);
+        if (caller == null) return;
+        _result.Invocations.Add(new InvocationFact
+        {
+            Caller = caller,
+            Target = Ref(ev),
+            Arguments = new() { Argument(registration.Right, model, null, 0) },
+            Receiver = Receiver(registration.Left is MemberAccessExpressionSyntax ma ? ma.Expression : null, model, 0),
+            ReceiverType = Ref(ev.ContainingType),
+            Location = ToLocation(registration.GetLocation()),
+        });
     }
 
     private string? Template(ExpressionSyntax expression, SemanticModel model, int depth)
@@ -746,7 +791,7 @@ public sealed class ProjectAnalyzer
         if (model.GetSymbolInfo(assignment.Left).Symbol is not ({ } member and (IFieldSymbol or IPropertySymbol { IsIndexer: false })) || !member.Locations.Any(l => l.IsInSource)) return;
         var memberType = member is IFieldSymbol f ? f.Type : ((IPropertySymbol)member).Type;
         var valueType = model.GetTypeInfo(assignment.Right).Type;
-        if (!IsCloudSdkType(memberType) && !IsCloudSdkType(valueType)) return;
+        if (!IsCloudSdkType(memberType) && !IsCloudSdkType(valueType) && !IsOptionsWrapper(memberType) && !_optionTypes.Contains(Key(memberType))) return;
         var caller = CallerKey(assignment, model);
         if (caller == null) return;
         (_result.Assignments ??= new()).Add(new AssignmentFact
@@ -762,7 +807,7 @@ public sealed class ProjectAnalyzer
     {
         if (model.GetDeclaredSymbol(declaration) is not ({ } member and (IFieldSymbol or IPropertySymbol { IsIndexer: false })) || !member.Locations.Any(l => l.IsInSource)) return;
         var memberType = member is IFieldSymbol f ? f.Type : ((IPropertySymbol)member).Type;
-        if (!IsCloudSdkType(memberType) && !IsCloudSdkType(model.GetTypeInfo(value).Type)) return;
+        if (!IsCloudSdkType(memberType) && !IsCloudSdkType(model.GetTypeInfo(value).Type) && !IsOptionsWrapper(memberType) && !_optionTypes.Contains(Key(memberType))) return;
         var key = Key(member);
         if (!_declared.Contains(key)) return;
         (_result.Assignments ??= new()).Add(new AssignmentFact
@@ -773,6 +818,11 @@ public sealed class ProjectAnalyzer
             Location = ToLocation(declaration.GetLocation()),
         });
     }
+
+    private static bool IsOptionsWrapper(ITypeSymbol? type) => type is INamedTypeSymbol { Arity: 1 } named
+        && !named.Locations.Any(l => l.IsInSource)
+        && named.ContainingNamespace.ToDisplayString() == "Microsoft.Extensions.Options"
+        && named.Name is "IOptions" or "IOptionsSnapshot" or "IOptionsMonitor";
 
     private void HandleCreation(BaseObjectCreationExpressionSyntax creation, SemanticModel model)
     {
@@ -1015,6 +1065,7 @@ public sealed class ProjectAnalyzer
 
     private string Key(ISymbol symbol)
     {
+        if (symbol is IParameterSymbol parameter) return $"{Key(parameter.ContainingSymbol)}::parameter:{parameter.Ordinal}";
         var original = symbol.OriginalDefinition;
         if (original is IMethodSymbol { ReducedFrom: { } reduced }) original = reduced;
         var id = DocumentationCommentId.CreateDeclarationId(original);

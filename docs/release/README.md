@@ -4,6 +4,7 @@ Historical audit records kept for traceability. They describe the state of the c
 
 | Report | Scope |
 |---|---|
+| [release-check-0.18.0.md](release-check-0.18.0.md) | 0.18.0 release check: auto-discovery, multi-repository QA on eShop, eShopOnContainers and the bundled landscape, fixes and carried known issues |
 | [release-gate-phase18.md](release-gate-phase18.md) | 0.18.0 release-candidate audit: P0/P1 closure, security and regression gates, accepted P2 limitations |
 | [release-gate-phase15.md](release-gate-phase15.md) | Phase 15 production hardening and the Phase 15.1 release-condition closure |
 | [release-readiness.md](release-readiness.md) | Phase 12 production-readiness report (historical) |

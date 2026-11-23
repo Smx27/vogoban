@@ -21,6 +21,8 @@ A few commands have subcommands (`graph`, `azure`, `metagraph`, `baseline`, `hoo
 
 `graph [path]` starts the local interactive graph workspace. Its incremental subcommands remain available: `graph sync`, `graph status`, `graph changes`, `graph history` and `graph diff` (the same as `diff`). There is no `graph search`; searching is `vogoban find`.
 
+For several repositories, use the [explicit shared-store MetaGraph workflow](../graph/metagraph-workflow.md): register each repository, run `analyze-all`, run `metagraph build`, then open `graph` with the same `--db`. Neither a parent-folder analysis nor `analyze-all` alone builds a federated graph. The guide distinguishes shared dependencies, extracted publisher/consumer and resource links, and service identities that remain unresolved.
+
 Typical session:
 
 ```bash
@@ -40,7 +42,7 @@ These options are parsed for every command. A command ignores options it does no
 
 | Option                                                                             | Meaning                                                                                                                                                                                                                                                                       |
 | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--db <path>`                                                                      | Graph store to use. Default: `$VOGOBAN_DB`, otherwise `<repository>/.vogoban/graph.db` for analyze, the graph workspace and sync commands. Other query commands use `./.vogoban/graph.db`; run them from the repository or pass `--db`.                                       |
+| `--db <path>`                                                                      | Graph store to use. Default: `$VOGOBAN_DB`, otherwise `<repository>/.vogoban/graph.db` for analyze, the graph workspace and sync commands. Other query commands use `./.vogoban/graph.db`; run them from the repository or pass `--db`. A query command refuses a store that does not exist (exit 2, `no graph store at <path>`) instead of creating an empty one.                                       |
 | `--json`                                                                           | Print machine-readable JSON on stdout instead of the human view. Every command accepts it.                                                                                                                                                                                    |
 | `--depth <n>`                                                                      | Traversal depth. Defaults differ per command: `deps`/`callers`/`callees` 1, `path` 8, `frontend-chain` 12, `azure flow` 14, `impact` 6 (see [impact.md](impact.md)).                                                                                                          |
 | `--type <T,...>`                                                                   | Restrict relationship types, for example `--type CALLS,USES_TYPE`. Used by `show`, `deps`, `references`, `path`, `paths`. Unknown types are rejected.                                                                                                                         |
@@ -290,6 +292,7 @@ Every command and subcommand, with the page that documents it.
 
 | Command                                                              | Purpose                                                  | Page                         |
 | -------------------------------------------------------------------- | -------------------------------------------------------- | ---------------------------- |
+| `discover <dir>`                                                     | Find, register and analyze repositories, build MetaGraph | [metagraph.md](metagraph.md) |
 | `register <path>`                                                    | Add a repository to the catalog                          | [metagraph.md](metagraph.md) |
 | `analyze-repo <repo>` / `analyze-all`                                | Analyze catalog repositories                             | [metagraph.md](metagraph.md) |
 | `repositories` / `repository <repo>`                                 | Catalog entries and status                               | [metagraph.md](metagraph.md) |

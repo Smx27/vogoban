@@ -99,6 +99,7 @@ public sealed class SymbolFact
     public List<string> BaseTypeChain { get; init; } = new();
     public List<string> AllInterfaces { get; init; } = new();
     public int Arity { get; init; }
+    public List<SymRef>? TypeParameters { get; init; }
     public bool Generated { get; init; }
     public bool Implicit { get; init; }
     public List<string>? Conditions { get; init; }
@@ -208,6 +209,7 @@ public sealed class ProjectResult
     public required string ProjectId { get; init; }
     public required string AssemblyName { get; init; }
     public bool Success { get; set; }
+    public bool HasExternalProjectReferences { get; set; }
     public string? Error { get; set; }
     public List<string> ReferenceSources { get; init; } = new();
     public List<FrameworkContext> Frameworks { get; init; } = new();

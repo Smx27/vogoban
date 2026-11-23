@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.vg.invalid/orders/order-accepted.schema.json",
+  "title": "OrderAcceptedEvent",
+  "description": "Published by orders-service when an order is accepted for processing. Contract id orders/order-accepted. Mirrors Vg.Enterprise.Contracts.Orders.OrderAcceptedEvent.",
+  "type": "object",
+  "properties": {
+    "orderId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "customerId": {
+      "type": "string"
+    },
+    "total": {
+      "type": "number"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "processing",
+        "shipped",
+        "delivered",
+        "cancelled"
+      ]
+    },
+    "acceptedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "estimatedDelivery": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "orderId",
+    "customerId",
+    "total",
+    "status",
+    "acceptedAt"
+  ],
+  "additionalProperties": false
+}
