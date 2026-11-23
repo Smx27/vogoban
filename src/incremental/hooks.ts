@@ -16,6 +16,13 @@ const HOOKS: HookName[] = ["post-commit", "post-merge"];
 function gitDir(root: string): string {
   const r = Bun.spawnSync(["git", "-C", root, "rev-parse", "--git-path", "hooks"], { stdout: "pipe", stderr: "ignore" });
   const rel = r.exitCode === 0 ? r.stdout.toString().trim() : ".git/hooks";
+  if (rel === "/dev/null" || rel === "dev/null") {
+    // If core.hooksPath is set to /dev/null globally, fallback to the repository's internal .git/hooks directory
+    const rDir = Bun.spawnSync(["git", "-C", root, "rev-parse", "--git-dir"], { stdout: "pipe", stderr: "ignore" });
+    const gitDirBase = rDir.exitCode === 0 ? rDir.stdout.toString().trim() : ".git";
+    const absGitDir = gitDirBase.startsWith("/") ? gitDirBase : join(root, gitDirBase);
+    return join(absGitDir, "hooks");
+  }
   return rel.startsWith("/") ? rel : join(root, rel);
 }
 

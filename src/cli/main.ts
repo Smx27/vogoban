@@ -16,7 +16,7 @@ import { changeSetFromGit } from "../incremental/git.ts";
 import { installHooks, uninstallHooks, hookStatus, type HookMode } from "../incremental/hooks.ts";
 import { discoverRepository, repositoryRoot } from "../pipeline/discovery.ts";
 import { loadConfig as loadRepoConfig } from "../pipeline/config.ts";
-import { registerRepository } from "../metagraph/catalog.ts";
+import { discoverRepositories, registerRepository } from "../metagraph/catalog.ts";
 import { exportAnalysis, exportMetaGraph } from "../export/export.ts";
 import { AnalysisGraph, type AnalysisScope } from "../analysis/graph.ts";
 import { propagate, type ImpactOptions, type ImpactResult } from "../analysis/impact.ts";
@@ -140,7 +140,8 @@ MetaGraph (multi-repository; repository graphs stay authoritative for their own 
   analyze-all                    Analyze every catalog repository (failures do not stop the others)
   repositories                   Catalog: identity, analyzed commit, graph version, status (READY/STALE/FAILED/...)
   repository <repo>              Catalog entry, roles, analysis runs and cross-repository connections
-  metagraph [build|stats|snapshots|unresolved|conflicts|export] [--force] [--format F --out P]
+  metagraph [build|stats|snapshots|unresolved|conflicts|export|discover] [--force] [--format F --out P]
+  metagraph discover <directory> [--max-depth N] [--analyze] [--build]
   connections [repo]             Cross-repository relationships with evidence and environment
   providers <api|"VERB /path">   (alias api-providers) Provider repositories, APIs and implementing endpoints
   api-consumers <api|"VERB /path">  Cross-repository and same-repository consumers
@@ -373,6 +374,9 @@ const { values: opts, positionals } = parseCli(() => parseArgs({
     "strict-incremental": { type: "boolean", default: false },
     "hook-mode": { type: "string" },
     open: { type: "boolean", default: false },
+    "max-depth": { type: "string" },
+    analyze: { type: "boolean", default: false },
+    build: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
 }));
@@ -452,13 +456,34 @@ function repoId(store: GraphStore, explicit?: string): string | undefined {
   return repo.id;
 }
 
-function one(query: GraphQuery, ref: string | undefined, store: GraphStore): Entity {
+function one(query: GraphQuery, ref: string | undefined, store: GraphStore, expectedKinds?: EntityKind[]): Entity {
   if (!ref) throw new CliError("an entity reference is required (id, symbol key, qualified name, or name)");
-  const matches = query.resolve(ref, { kinds: kinds(), repositoryId: opts.repo ? repoId(store) : undefined });
+  const filterKinds = opts.kind ? kinds() : expectedKinds;
+  let matches = query.resolve(ref, { kinds: filterKinds, repositoryId: opts.repo ? repoId(store) : undefined });
   if (matches.length === 1) return matches[0]!;
-  if (matches.length === 0) throw new CliError(`no entity matches '${ref}'`);
+  if (matches.length === 0) {
+    if (filterKinds && !opts.kind) {
+      matches = query.resolve(ref, { kinds: kinds(), repositoryId: opts.repo ? repoId(store) : undefined });
+      if (matches.length === 1) return matches[0]!;
+    }
+    if (matches.length === 0) throw new CliError(`no entity matches '${ref}'`);
+  }
   const exact = matches.filter((m) => m.qualifiedName === ref || m.symbolKey === ref);
   if (exact.length === 1) return exact[0]!;
+  if (exact.length > 1 && !opts.kind && expectedKinds?.length) {
+    const exactExpected = exact.filter((m) => expectedKinds.includes(m.kind));
+    if (exactExpected.length === 1) return exactExpected[0]!;
+  }
+  if (!opts.kind && expectedKinds?.length) {
+    const expectedMatches = matches.filter((m) => expectedKinds.includes(m.kind));
+    if (expectedMatches.length === 1) return expectedMatches[0]!;
+    if (expectedMatches.length > 1) {
+      throw new CliError(
+        `'${ref}' is ambiguous (${expectedMatches.length} matches of expected kind ${expectedKinds.join(", ")}):\n${expectedMatches.slice(0, 20).map((m) => `  ${m.id}  ${label(m)}  ${where(m)}`).join("\n")}`,
+        expectedMatches.map((m) => ({ id: m.id, kind: m.kind, qualifiedName: m.qualifiedName })),
+      );
+    }
+  }
   throw new CliError(
     `'${ref}' is ambiguous (${matches.length} matches); use an id or --kind:\n${matches.slice(0, 20).map((m) => `  ${m.id}  ${label(m)}  ${where(m)}`).join("\n")}`,
     matches.map((m) => ({ id: m.id, kind: m.kind, qualifiedName: m.qualifiedName })),
@@ -592,16 +617,21 @@ async function main() {
     return new AnalysisGraph(store, { scope, repositoryId: opts.repo ? catalogRef(opts.repo).repositoryId : undefined, environment: opts.env });
   };
   const impactOptions = (mode: ImpactOptions["mode"]): ImpactOptions => ({ mode, maxDepth: depthOpt(mode === "impact" ? 6 : 3), maxNodes: intOpt(opts["max-nodes"], 2000), expandSeeds: true });
-  const target = (ref: string | undefined): Entity => {
+  const target = (ref: string | undefined, expectedKinds?: EntityKind[]): Entity => {
     if (!ref) throw new CliError("an entity reference is required");
-    const meta = store.findMetaEntities({ ids: [ref] })[0] ?? store.findMetaEntities({ nameLike: ref }).filter((e) => e.name === ref || e.qualifiedName === ref)[0];
-    if (meta) return meta;
+    const filterKinds = opts.kind ? kinds() : expectedKinds;
+    const metaEntities = store.findMetaEntities({ ids: [ref], kinds: filterKinds });
+    let meta = metaEntities[0] ?? store.findMetaEntities({ nameLike: ref, kinds: filterKinds }).filter((e) => e.name === ref || e.qualifiedName === ref)[0];
+    if (!meta && !opts.kind && expectedKinds?.length) {
+      meta = store.findMetaEntities({ ids: [ref] })[0] ?? store.findMetaEntities({ nameLike: ref }).filter((e) => e.name === ref || e.qualifiedName === ref)[0];
+    }
+    if (meta && (!expectedKinds || expectedKinds.includes(meta.kind) || opts.kind)) return meta;
     const repo = store.getCatalog(ref);
-    if (repo) {
+    if (repo && (!expectedKinds || expectedKinds.includes("Repository") || opts.kind)) {
       const entity = store.findEntities({ kinds: ["Repository"], repositoryId: repo.repositoryId })[0];
       if (entity) return entity;
     }
-    return one(query, ref, store);
+    return one(query, ref, store, expectedKinds);
   };
   const stepText = (s: GraphPath["steps"][number]) => {
     const rel = `${s.relationship.type}${s.relationship.graphScope === "meta" ? "@meta" : ""}${s.relationship.evidence === "INFERRED" || s.relationship.evidence === "HEURISTIC" ? "?" : ""}${s.relationship.environment ? ` env=${s.relationship.environment}` : ""}`;
@@ -1140,7 +1170,7 @@ async function main() {
         break;
       }
       case "project": {
-        const entity = one(query, args[0], store);
+        const entity = one(query, args[0], store, ["Project"]);
         if (entity.kind !== "Project") throw new CliError(`${label(entity)} is not a project`);
         const out = query.outgoing(entity.id);
         const incoming = query.incoming(entity.id, ["PROJECT_REFERENCES"]);
@@ -1554,7 +1584,7 @@ async function main() {
         break;
       }
       case "api-impact": {
-        const op = target(args[0]);
+        const op = target(args[0], ["ApiOperation", "Api"]);
         if (op.kind !== "ApiOperation") throw new CliError(`${label(op)} is not an ApiOperation`);
         if (opts.change && !API_CHANGE_KINDS.includes(opts.change)) throw new CliError(`--change must be one of ${API_CHANGE_KINDS.join(", ")}`);
         const r = apiImpact(analysisGraph(), op, opts.change ?? null, impactOptions("impact"));
@@ -1575,7 +1605,7 @@ async function main() {
         break;
       }
       case "message-impact": {
-        const m = target(args[0]);
+        const m = target(args[0], ["Message", "SharedContract"]);
         if (!["Message", "SharedContract"].includes(m.kind)) throw new CliError(`${label(m)} is not a Message or SharedContract`);
         const r = messageImpact(analysisGraph(), m, impactOptions("impact"));
         const side = (l: typeof r.producerSide) => l.slice(0, rowLimit()).map((x) => `  ${x.repository ?? "-"}: ${x.entity.qualifiedName ?? x.entity.name} [${x.relationship.type}/${x.relationship.evidence}] apps=${x.applications.map((a) => a.name).join(",") || "-"}`);
@@ -1591,7 +1621,7 @@ async function main() {
         break;
       }
       case "service-impact": {
-        const app = target(args[0]);
+        const app = target(args[0], ["Application"]);
         if (app.kind !== "Application") throw new CliError(`${label(app)} is not an Application`);
         const r = serviceImpact(analysisGraph(), app, impactOptions("impact"));
         await maybeExport("service-impact", r, [...r.upstream.impacted.map((i) => ({ direction: "upstream", ...impactRow(i) })), ...r.downstream.impacted.map((i) => ({ direction: "downstream", ...impactRow(i) }))]);
@@ -2203,6 +2233,72 @@ async function main() {
           if (!opts.out) throw new CliError("--out is required");
           const counts = await exportMetaGraph(store, format, opts.out);
           output(() => `Exported MetaGraph ${format} to ${opts.out}: ${Object.entries(counts).map(([k, n]) => `${k}=${n}`).join(" ")}`, counts);
+        } else if (sub === "discover") {
+          const targetDir = args[1];
+          if (!targetDir) throw new CliError("metagraph discover requires a directory path");
+          const maxDepth = intOpt(opts["max-depth"], 3);
+          const repoDirs = discoverRepositories(targetDir, maxDepth);
+          const existingCatalog = store.listCatalog();
+          const existingPaths = new Set(existingCatalog.map((c) => c.localPath ? resolve(c.localPath) : ""));
+
+          const registeredList: { name: string; path: string; status: "new" | "existing"; repositoryId: string }[] = [];
+          for (const dir of repoDirs) {
+            const isExisting = existingPaths.has(resolve(dir));
+            const entry = registerRepository(store, dir, !opts["no-semantic"]);
+            registeredList.push({
+              name: entry.name,
+              path: dir,
+              status: isExisting ? "existing" : "new",
+              repositoryId: entry.repositoryId,
+            });
+          }
+
+          let analysisResults: { repository: string; status: string; commit: string | null; detail: string }[] | undefined;
+          if (opts.analyze) {
+            analysisResults = [];
+            for (const item of registeredList) {
+              const entry = store.getCatalog(item.repositoryId);
+              if (!entry || !entry.localPath || !existsSync(entry.localPath)) {
+                analysisResults.push({ repository: item.name, status: "UNAVAILABLE", commit: entry?.analyzedCommit ?? null, detail: `path not available: ${entry?.localPath ?? "-"}` });
+                continue;
+              }
+              try {
+                const { run } = await analyzeRepository(entry.localPath, store, defaultPlugins(), { semantic: entry.semantic }, log);
+                analysisResults.push({ repository: entry.name, status: "READY", commit: run.commit, detail: `entities=${run.stats.entities} relationships=${run.stats.relationships} ${run.stats.durationMs}ms` });
+              } catch (error) {
+                analysisResults.push({ repository: entry.name, status: "FAILED", commit: null, detail: error instanceof Error ? error.message : String(error) });
+              }
+            }
+          }
+
+          let buildResult: { id: string; repositories: number } | undefined;
+          if (opts.build) {
+            const { snapshot } = buildMetaGraph(store, log, true);
+            buildResult = { id: snapshot.id, repositories: snapshot.repositories.length };
+          }
+
+          const summary = {
+            baseDir: resolve(targetDir),
+            maxDepth,
+            discovered: repoDirs.length,
+            newlyRegistered: registeredList.filter((r) => r.status === "new").length,
+            existing: registeredList.filter((r) => r.status === "existing").length,
+            repositories: registeredList,
+            analysis: analysisResults,
+            build: buildResult,
+          };
+
+          output(() => [
+            `Discovered ${summary.discovered} repositories under ${summary.baseDir} (depth: ${maxDepth})`,
+            `  newly registered: ${summary.newlyRegistered}, existing: ${summary.existing}`,
+            ...(registeredList.length
+              ? [table(registeredList.map((r) => [r.name, r.status, r.path]), ["repository", "status", "path"])]
+              : ["  No git repositories found."]),
+            ...(analysisResults?.length
+              ? ["\nAnalysis results:", table(analysisResults.map((r) => [r.repository, r.status, r.commit?.slice(0, 12) ?? "-", r.detail]), ["repository", "status", "commit", "detail"])]
+              : []),
+            ...(buildResult ? [`\nMetaGraph build snapshot: ${buildResult.id} (${buildResult.repositories} repositories)`] : []),
+          ].join("\n"), summary);
         } else throw new CliError(`unknown metagraph subcommand '${sub}'`);
         break;
       }

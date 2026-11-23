@@ -12,6 +12,26 @@ export VOGOBAN_DB=$HOME/demo/meta/graph.db
 
 The repositories have no Git remote, so their identity is `local:<path>`. With a remote, the identity is derived from the remote URL and stays stable across clones. The outputs below come from two copies of the demo store, so paths, ids and commits vary between examples; yours will differ too.
 
+## Batch Discovery workflow (`metagraph discover`)
+
+Instead of registering each repository individually, you can automatically discover all repositories under a parent directory:
+
+```bash
+# Auto-discover and register all git repositories up to depth 3 (default)
+vogoban metagraph discover /path/to/workspace
+
+# Discover, register, run analysis, and build MetaGraph in one go
+vogoban metagraph discover /path/to/workspace --analyze --build
+
+# Specify a custom directory search depth limit
+vogoban metagraph discover /path/to/workspace --max-depth 4 --analyze --build
+```
+
+The `--max-depth` option defaults to `3`. Common values:
+- `1`: Immediate subdirectories only (e.g. `/workspace/repo-a`, `/workspace/repo-b`).
+- `2` or `3` (recommended): Standard multi-repo workspaces with grouped folders (e.g. `/workspace/services/catalog-api`).
+- `4` to `6`: Deeply nested enterprise monorepo/multi-repo directory trees.
+
 ## Typical workflow
 
 ```bash
@@ -24,6 +44,53 @@ vogoban connections
 ```
 
 After code changes, `vogoban graph sync <path> --meta` updates one repository and rebuilds the MetaGraph in one step (see [sync.md](sync.md)).
+
+## metagraph discover
+
+### What it does
+
+Traverses a parent directory up to `--max-depth` (default `3`), automatically locates Git repository roots, registers them into the catalog, and optionally triggers full repository analysis (`--analyze`) and MetaGraph building (`--build`). Subdirectories inside an already discovered Git repository root are automatically skipped.
+
+### Usage
+
+```bash
+vogoban metagraph discover <directory> [--max-depth N] [--analyze] [--build] [--no-semantic] [--json]
+```
+
+### Options
+
+- `--max-depth <N>`: Directory traversal depth limit for Git root detection. Default is `3`. Use `1` for flat workspace folders, `2` or `3` for grouped folders, or higher (e.g., `5`) for nested organizational structures.
+- `--analyze`: Automatically run analysis across all discovered repositories.
+- `--build`: Build the MetaGraph snapshot once repositories are analyzed.
+- `--no-semantic`: Disable semantic analysis when registering and analyzing repositories.
+- `--json`: Output machine-readable JSON summary.
+
+### Example
+
+```bash
+vogoban metagraph discover /var/repos --analyze --build
+```
+
+### Output
+
+```text
+Discovered 3 repositories under /var/repos (depth: 3)
+  newly registered: 3, existing: 0
+repository           status    path
+-------------------  --------  -------------------------
+contoso-orders       new       /var/repos/contoso-orders
+contoso-fulfillment  new       /var/repos/contoso-fulfillment
+contoso-platform-infra new     /var/repos/contoso-platform-infra
+
+Analysis results:
+repository           status  commit        detail
+-------------------  ------  ------------  ----------------------------------
+contoso-orders       READY   8f3e1b7c2a10  entities=42 relationships=89 120ms
+contoso-fulfillment  READY   a1b2c3d4e5f6  entities=28 relationships=54 85ms
+contoso-platform-infra READY e5f6a1b2c3d4  entities=15 relationships=30 50ms
+
+MetaGraph build snapshot: snap_8e9bc4c6c66ec999c08e1740 (3 repositories)
+```
 
 ## register
 

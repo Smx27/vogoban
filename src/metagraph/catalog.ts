@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { CatalogEntry, RepositoryStatus } from "../graph/model.ts";
 import { loadConfig } from "../pipeline/config.ts";
 import { currentCommit, discoverRepository, repositoryRoot } from "../pipeline/discovery.ts";
@@ -36,3 +37,48 @@ export function catalogStatus(entry: CatalogEntry): CatalogStatus {
 }
 
 export const usableForMetaGraph = (s: CatalogStatus) => s.entry.graphVersion !== null;
+
+export function discoverRepositories(baseDir: string, maxDepth = 3): string[] {
+  const resolvedBase = resolve(baseDir);
+  if (!existsSync(resolvedBase)) return [];
+
+  const foundRoots: string[] = [];
+
+  function isGitRoot(dir: string): boolean {
+    const gitPath = join(dir, ".git");
+    return existsSync(gitPath);
+  }
+
+  function walk(currentDir: string, currentDepth: number) {
+    if (isGitRoot(currentDir)) {
+      foundRoots.push(currentDir);
+      return;
+    }
+    if (currentDepth >= maxDepth) return;
+
+    let entries: string[];
+    try {
+      entries = readdirSync(currentDir);
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      if (entry === "node_modules" || entry === ".git" || entry === "bin" || entry === "obj" || entry.startsWith(".")) {
+        continue;
+      }
+      const fullPath = join(currentDir, entry);
+      try {
+        const stat = statSync(fullPath);
+        if (stat.isDirectory()) {
+          walk(fullPath, currentDepth + 1);
+        }
+      } catch {
+        // Skip inaccessible entries
+      }
+    }
+  }
+
+  walk(resolvedBase, 0);
+  return foundRoots.sort();
+}
